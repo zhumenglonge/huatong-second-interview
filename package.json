@@ -1,0 +1,33 @@
+{
+  "name": "biomni-lab",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Biomni-inspired AI agent workbench (improved prototype) with real Qoder Agent SDK backend",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "setup:cli": "QODER_INSTALL_BUNDLED_CLI=1 node node_modules/@qodercn-ai/qodercn-agent-sdk/scripts/postinstall.cjs"
+  },
+  "dependencies": {
+    "@qodercn-ai/qodercn-agent-sdk": "^1.0.43",
+    "@xyflow/react": "^12.11.6",
+    "lucide-react": "^1.47.0",
+    "next": "^15.3.3",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "zustand": "^5.0.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "eslint": "^9.27.0",
+    "eslint-config-next": "^15.3.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.7"
+  }
+}
