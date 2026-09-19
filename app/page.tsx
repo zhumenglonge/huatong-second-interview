@@ -7,11 +7,15 @@ import { IconRail } from '@/components/IconRail';
 import { InputBar } from '@/components/InputBar';
 import { RightPanel } from '@/components/RightPanel';
 import { Sidebar } from '@/components/Sidebar';
+import { startBlankChat, type MainView } from '@/lib/blank-chat';
 import { useTaskStore } from '@/lib/store';
 
 export default function Page() {
   const refreshTasks = useTaskStore((s) => s.refreshTasks);
-  const [view, setView] = useState<'conv' | 'canvas'>('conv');
+  const newTask = useTaskStore((s) => s.newTask);
+  const [view, setView] = useState<MainView>('conv');
+
+  const handleNewChat = () => startBlankChat(newTask, setView);
 
   useEffect(() => {
     void refreshTasks();
@@ -19,7 +23,7 @@ export default function Page() {
 
   return (
     <div className="app-shell">
-      <IconRail />
+      <IconRail onNewChat={handleNewChat} />
       <Sidebar />
       <main className="main-area">
         <div className="col-head">

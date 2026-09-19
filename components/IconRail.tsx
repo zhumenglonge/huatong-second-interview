@@ -1,9 +1,11 @@
 'use client';
 
+import React from 'react';
 import { Blocks, CircleHelp, FolderOpen, User } from 'lucide-react';
 
 interface IconRailProps {
   activeItem?: string;
+  onNewChat?: () => void;
 }
 
 const NAV_ITEMS = [
@@ -13,12 +15,18 @@ const NAV_ITEMS = [
 
 const BOTTOM_ITEMS = [{ id: 'help', label: '帮助', icon: CircleHelp }] as const;
 
-export function IconRail({ activeItem = 'project' }: IconRailProps) {
+export function IconRail({ activeItem = 'project', onNewChat }: IconRailProps) {
   return (
     <div className="icon-rail">
-      <div className="rail-logo" aria-label="Biomni Lab">
+      <button
+        className="rail-logo"
+        aria-label="新建空白问答会话"
+        title="新建空白问答会话"
+        type="button"
+        onClick={onNewChat}
+      >
         B
-      </div>
+      </button>
 
       <nav className="rail-nav" aria-label="主导航">
         {NAV_ITEMS.map((item) => (
