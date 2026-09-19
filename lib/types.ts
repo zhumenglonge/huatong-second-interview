@@ -4,6 +4,8 @@ export type TaskStatus =
   | 'queued'
   | 'running'
   | 'waiting'
+  | 'planning'
+  | 'awaiting_approval'
   | 'success'
   | 'failed'
   | 'cancelled';
@@ -30,6 +32,12 @@ export interface AgentRunOptions {
   model: ModelProfile;
   skills: string[];
   auto: boolean;
+}
+
+export interface UploadRef {
+  token: string;
+  name: string;
+  size: number;
 }
 
 export interface TaskRow {
@@ -79,7 +87,7 @@ export interface EventRow {
  */
 export interface Block {
   id: string;
-  kind: 'user' | 'agent_text' | 'step' | 'trace' | 'plan' | 'artifact' | 'error';
+  kind: 'user' | 'agent_text' | 'step' | 'trace' | 'plan' | 'clarification' | 'artifact' | 'error';
   /** user text / accumulated agent text / trace content / error message */
   text?: string;
   /** step name / artifact name / plan title */

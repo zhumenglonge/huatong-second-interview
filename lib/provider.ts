@@ -43,7 +43,9 @@ const SKILL_GUIDANCE: Record<string, string> = {
   protein_design: 'Apply protein sequence/structure analysis and rational design principles; clearly label computational hypotheses.',
 };
 
-function systemPromptFor(options: AgentRunOptions): string {
+export type AgentMode = 'plan' | 'execute';
+
+function systemPromptFor(options: AgentRunOptions, mode: AgentMode): string {
   const selected = options.skills.map((skill) => SKILL_GUIDANCE[skill]).filter(Boolean);
   const skillSection = selected.length
     ? `\nSelected specialist skills for this turn:\n${selected.map((item) => `- ${item}`).join('\n')}`
@@ -51,7 +53,11 @@ function systemPromptFor(options: AgentRunOptions): string {
   const autoSection = options.auto
     ? '\nAuto mode is enabled: make safe, reasonable assumptions when clarification is optional, and continue autonomously.'
     : '';
-  return `${SYSTEM_PROMPT}${skillSection}${autoSection}`;
+  const modeSection = mode === 'plan'
+    ? `\nYou are in planning mode. Do not edit files or execute the research workflow yet.
+First inspect only what is necessary, ask one concise structured question with AskUserQuestion if critical information is missing, then produce a concrete numbered execution plan and call ExitPlanMode.`
+    : '\nThe plan has been approved. Execute the requested workflow now and produce the deliverables.';
+  return `${SYSTEM_PROMPT}${skillSection}${autoSection}${modeSection}`;
 }
 
 /**
@@ -70,12 +76,13 @@ function resolveCliPath(): string | undefined {
 export async function runQoderAgent(opts: {
   input: string;
   options: AgentRunOptions;
+  mode?: AgentMode;
   cwd: string;
   signal: AbortSignal;
   emit: Emit;
   onReady?: (handle: AgentHandle) => void;
-}): Promise<{ ok: boolean; error?: string }> {
-  const { input, options, cwd, signal, emit, onReady } = opts;
+}): Promise<{ ok: boolean; error?: string; outcome?: 'waiting' | 'awaiting_approval' }> {
+  const { input, options, mode = 'execute', cwd, signal, emit, onReady } = opts;
 
   const abortController = new AbortController();
   const onAbort = () => abortController.abort();
@@ -97,9 +104,10 @@ export async function runQoderAgent(opts: {
         includePartialMessages: true,
         maxTurns: 30,
         model: options.model,
+        planMode: mode === 'plan',
         permissionMode: 'bypassPermissions',
         allowDangerouslySkipPermissions: true,
-        systemPrompt: systemPromptFor(options),
+        systemPrompt: systemPromptFor(options, mode),
         ...(resolveCliPath() ? { pathToQoderCLIExecutable: resolveCliPath() } : {}),
         stderr: (data) => console.error('[qodercn:stderr]', data),
       },
@@ -117,6 +125,20 @@ export async function runQoderAgent(opts: {
   let stepOrd = 0;
   const toolUseToStep = new Map<string, string>();
   const seenArtifacts = new Set<string>();
+  let planText = '';
+
+  const emitPlan = (fallback?: string) => {
+    const text = planText.trim() || fallback?.trim() || 'Plan generated. Review and approve to continue.';
+    emit('block.add', {
+      block: {
+        id: `plan-${randomUUID()}`,
+        kind: 'plan',
+        name: '执行计划',
+        text,
+        meta: { approved: false, executionPrompt: input, options },
+      },
+    });
+  };
 
   const ensureTextBlock = () => {
     if (!currentTextBlockId) {
@@ -139,6 +161,10 @@ export async function runQoderAgent(opts: {
               ? (ev.delta.text as string)
               : null;
           if (deltaText) {
+            if (mode === 'plan') {
+              planText += deltaText;
+              break;
+            }
             turnHadDelta = true;
             emit('block.delta', { id: ensureTextBlock(), delta: deltaText });
           }
@@ -149,6 +175,25 @@ export async function runQoderAgent(opts: {
           const content = (msg as any).message?.content as any[] | undefined;
           for (const block of content ?? []) {
             if (block.type === 'tool_use') {
+              const toolName = String(block.name ?? '').toLowerCase();
+              if (mode === 'plan' && toolName.includes('askuserquestion')) {
+                const question = String(block.input?.question ?? 'Please provide the missing information.');
+                const optionsList = Array.isArray(block.input?.options) ? block.input.options.map(String) : [];
+                emit('block.add', {
+                  block: {
+                    id: `clarification-${randomUUID()}`,
+                    kind: 'clarification',
+                    name: '需要补充信息',
+                    text: question,
+                    meta: { question, options: optionsList },
+                  },
+                });
+                return { ok: true, outcome: 'waiting' };
+              }
+              if (mode === 'plan' && toolName.includes('exitplanmode')) {
+                emitPlan();
+                return { ok: true, outcome: 'awaiting_approval' };
+              }
               const stepId = `step-${block.id}`;
               toolUseToStep.set(block.id, stepId);
               stepOrd += 1;
@@ -164,6 +209,10 @@ export async function runQoderAgent(opts: {
                 },
               });
             } else if (block.type === 'text' && typeof block.text === 'string') {
+              if (mode === 'plan') {
+                if (!turnHadDelta && block.text.trim()) planText += block.text;
+                continue;
+              }
               if (!turnHadDelta && block.text.trim()) {
                 emit('block.add', {
                   block: { id: `text-${(msg as any).uuid ?? randomUUID()}`, kind: 'agent_text', text: block.text },
@@ -223,6 +272,10 @@ export async function runQoderAgent(opts: {
         case 'result': {
           const r = msg as any;
           if (r.subtype === 'success') {
+            if (mode === 'plan') {
+              emitPlan(typeof r.result === 'string' ? r.result : undefined);
+              return { ok: true, outcome: 'awaiting_approval' };
+            }
             if (emittedTextBlocks === 0 && typeof r.result === 'string' && r.result.trim()) {
               emit('block.add', { block: { id: `text-${randomUUID()}`, kind: 'agent_text', text: r.result } });
             }

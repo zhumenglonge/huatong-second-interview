@@ -13,7 +13,7 @@ import {
   updateTaskStatus,
 } from './db';
 import { publish } from './events';
-import { runQoderAgent, type AgentHandle } from './provider';
+import { runQoderAgent, type AgentHandle, type AgentMode } from './provider';
 import type { AgentRunOptions, TaskStatus } from './types';
 
 /**
@@ -84,6 +84,7 @@ export function startTask(
   taskId: string,
   input: string,
   options: AgentRunOptions = { model: 'Auto', skills: [], auto: false },
+  mode: AgentMode = 'execute',
 ) {
   if (registry().has(taskId)) return;
 
@@ -133,6 +134,7 @@ export function startTask(
       const res = await runQoderAgent({
         input,
         options,
+        mode,
         cwd,
         signal: abort.signal,
         emit: emitWithTables,
@@ -147,6 +149,10 @@ export function startTask(
 
       if (abort.signal.aborted) {
         setTaskStatus(taskId, 'cancelled');
+      } else if (res.outcome === 'waiting') {
+        setTaskStatus(taskId, 'waiting');
+      } else if (res.outcome === 'awaiting_approval') {
+        setTaskStatus(taskId, 'awaiting_approval');
       } else if (res.ok) {
         setTaskStatus(taskId, 'success');
       } else {

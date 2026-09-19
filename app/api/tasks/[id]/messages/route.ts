@@ -3,6 +3,8 @@ import { appendEvent, buildSnapshot, getTask } from '@/lib/db';
 import { publish } from '@/lib/events';
 import { isRunning, startTask } from '@/lib/runner';
 import type { AgentRunOptions, Block, ModelProfile } from '@/lib/types';
+import type { UploadRef } from '@/lib/types';
+import { consumeUploads, promptWithAttachments } from '@/lib/uploads';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,17 +49,28 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   if (isRunning(id)) return NextResponse.json({ error: 'task is already running' }, { status: 409 });
 
   const body = (await req.json().catch(() => null)) as
-    | { input?: string; options?: Partial<AgentRunOptions> }
+    | { input?: string; options?: Partial<AgentRunOptions>; attachments?: UploadRef[] }
     | null;
   const input = String(body?.input ?? '').trim();
   if (!input) return NextResponse.json({ error: 'input required' }, { status: 400 });
 
   const snapshot = buildSnapshot(id);
   const priorBlocks = snapshot?.blocks ?? [];
-  const block = { id: `user-${id}-${Date.now()}`, kind: 'user' as const, text: input };
+  const attachmentNames = consumeUploads(id, Array.isArray(body?.attachments) ? body.attachments : []);
+  const block = {
+    id: `user-${id}-${Date.now()}`,
+    kind: 'user' as const,
+    text: input,
+    meta: attachmentNames.length ? { attachments: attachmentNames } : undefined,
+  };
   const seq = appendEvent(id, 'block.add', { block });
   publish(id, { seq, type: 'block.add', block } as any);
 
-  startTask(id, conversationContext(priorBlocks, input), parseOptions(body?.options));
+  startTask(
+    id,
+    conversationContext(priorBlocks, promptWithAttachments(input, attachmentNames)),
+    parseOptions(body?.options),
+    body?.options?.auto ? 'execute' : 'plan',
+  );
   return NextResponse.json({ ok: true, taskId: id }, { status: 202 });
 }

@@ -6,7 +6,7 @@ import {
   Plus, Send, Sparkles, Square, Wrench, X,
 } from 'lucide-react';
 import { useTaskStore } from '@/lib/store';
-import type { ModelProfile } from '@/lib/types';
+import type { ModelProfile, UploadRef } from '@/lib/types';
 
 const MODELS: Array<{ id: ModelProfile; label: string; description: string }> = [
   { id: 'Auto', label: 'Auto', description: 'Qoder automatically selects the best model' },
@@ -43,14 +43,21 @@ export function InputBar() {
   const [addOpen, setAddOpen] = useState(false);
   const [skillOpen, setSkillOpen] = useState(false);
   const [skillQuery, setSkillQuery] = useState('');
+  const [attachments, setAttachments] = useState<UploadRef[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [composerError, setComposerError] = useState<string | null>(null);
   const composerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   const status = useTaskStore((state) => state.status);
   const currentId = useTaskStore((state) => state.currentId);
   const sendTask = useTaskStore((state) => state.send);
   const cancel = useTaskStore((state) => state.cancel);
   const retry = useTaskStore((state) => state.retry);
-  const running = status === 'running' || status === 'queued';
+  // Planning is an active agent run too: keep the composer editable for
+  // drafting, but prevent a second submit and expose the cancel action.
+  const running = status === 'running' || status === 'queued' || status === 'planning';
   const failed = status === 'failed';
   const activeModel = MODELS.find((item) => item.id === model) ?? MODELS[0];
   const filteredSkills = SKILLS.filter((skill) =>
@@ -69,9 +76,39 @@ export function InputBar() {
 
   const submit = async () => {
     const value = text.trim();
-    if (!value || running) return;
-    setText('');
-    await sendTask(value, { model, skills: selectedSkills, auto });
+    if (!value || running || uploading) return;
+    setComposerError(null);
+    const sent = await sendTask(value, { model, skills: selectedSkills, auto }, attachments);
+    if (sent) {
+      setText('');
+      setAttachments([]);
+    } else {
+      setComposerError('发送失败，请检查服务连接后重试。');
+    }
+  };
+
+  const uploadFiles = async (files: File[]) => {
+    if (files.length === 0) return;
+    setUploading(true);
+    setComposerError(null);
+    const form = new FormData();
+    const paths = files.map((file) =>
+      String((file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name),
+    );
+    files.forEach((file) => form.append('files', file));
+    form.append('paths', JSON.stringify(paths));
+    try {
+      const response = await fetch('/api/uploads', { method: 'POST', body: form });
+      const body = (await response.json()) as { uploads?: UploadRef[]; error?: string };
+      if (!response.ok) throw new Error(body.error || '上传失败');
+      setAttachments((current) => [...current, ...(body.uploads ?? [])]);
+    } catch (error) {
+      setComposerError((error as Error).message);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      if (folderInputRef.current) folderInputRef.current.value = '';
+    }
   };
 
   const toggleSkill = (id: string) => setSelectedSkills((current) =>
@@ -82,8 +119,17 @@ export function InputBar() {
   return (
     <div className="composer-wrap" ref={composerRef}>
       <div className="composer-tip"><Sparkles size={13} /> Type @ in the chat to mention databases, files, tools, or skill</div>
-      <div className={`composer ${running ? 'is-running' : ''}`}>
-        {selectedSkills.length > 0 && (
+      <div
+        className={`composer ${running ? 'is-running' : ''}`}
+        onDragOver={(event) => { event.preventDefault(); event.currentTarget.classList.add('is-dragging'); }}
+        onDragLeave={(event) => event.currentTarget.classList.remove('is-dragging')}
+        onDrop={(event) => {
+          event.preventDefault();
+          event.currentTarget.classList.remove('is-dragging');
+          void uploadFiles(Array.from(event.dataTransfer.files));
+        }}
+      >
+        {(selectedSkills.length > 0 || attachments.length > 0 || uploading) && (
           <div className="composer-chips">
             {selectedSkills.map((id) => {
               const skill = SKILLS.find((item) => item.id === id);
@@ -94,6 +140,15 @@ export function InputBar() {
                 </span>
               ) : null;
             })}
+            {attachments.map((attachment) => (
+              <span className="composer-chip attachment-chip" key={attachment.token} title={attachment.name}>
+                <Paperclip size={12} />
+                <span>{attachment.name}</span>
+                <small>{attachment.size < 1024 ? `${attachment.size} B` : `${(attachment.size / 1024).toFixed(1)} KB`}</small>
+                <button type="button" onClick={() => setAttachments((items) => items.filter((item) => item.token !== attachment.token))} aria-label={`Remove ${attachment.name}`}><X size={12} /></button>
+              </span>
+            ))}
+            {uploading && <span className="composer-chip upload-chip"><span className="upload-spinner" />上传中…</span>}
           </div>
         )}
 
@@ -123,11 +178,20 @@ export function InputBar() {
               {addOpen && (
                 <div className="composer-popover add-popover">
                   <button type="button" onClick={openSkills}><AtSign size={16} /><span><b>Skills and tools</b><small>Mention a specialist capability</small></span></button>
-                  <button type="button" disabled><FileUp size={16} /><span><b>Upload files</b><small>Coming with cloud drive support</small></span></button>
-                  <button type="button" disabled><Paperclip size={16} /><span><b>Attach folder</b><small>Coming soon</small></span></button>
+                  <button type="button" onClick={() => { setAddOpen(false); fileInputRef.current?.click(); }}><FileUp size={16} /><span><b>Upload files</b><small>Attach files to this task</small></span></button>
+                  <button type="button" onClick={() => { setAddOpen(false); folderInputRef.current?.click(); }}><Paperclip size={16} /><span><b>Attach folder</b><small>Upload a folder recursively</small></span></button>
                 </div>
               )}
             </div>
+            <input ref={fileInputRef} className="composer-file-input" type="file" multiple onChange={(event) => void uploadFiles(Array.from(event.target.files ?? []))} />
+            <input
+              ref={folderInputRef}
+              className="composer-file-input"
+              type="file"
+              multiple
+              {...({ webkitdirectory: '', directory: '' } as Record<string, string>)}
+              onChange={(event) => void uploadFiles(Array.from(event.target.files ?? []))}
+            />
             <label className="auto-control">
               <input type="checkbox" checked={auto} onChange={(event) => setAuto(event.target.checked)} />
               <span className="auto-switch" /><span>自动</span>
@@ -152,7 +216,7 @@ export function InputBar() {
                 </div>
               )}
             </div>
-            <button className="composer-send" type="button" onClick={() => running ? void cancel() : void submit()} disabled={!running && !text.trim()} aria-label={running ? '停止' : 'Send'}>
+            <button className="composer-send" type="button" onClick={() => running ? void cancel() : void submit()} disabled={!running && (!text.trim() || uploading)} aria-label={running ? '停止' : 'Send'}>
               {running ? <Square size={15} fill="currentColor" /> : <Send size={17} />}
             </button>
           </div>
@@ -172,6 +236,7 @@ export function InputBar() {
             </div>
           </div>
         )}
+        {composerError && <div className="composer-error">{composerError}</div>}
       </div>
     </div>
   );

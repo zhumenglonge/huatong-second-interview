@@ -33,7 +33,12 @@ export function applyEventToBlocks(blocks: Block[], type: string, payload: unkno
           id: `artifact-${p.artifact.id}`,
           kind: 'artifact',
           name: p.artifact.name,
-          meta: { size: p.artifact.size, kind: p.artifact.kind },
+          meta: {
+            size: p.artifact.size,
+            kind: p.artifact.kind,
+            artifactId: p.artifact.id,
+            taskId: p.artifact.taskId,
+          },
         });
       }
       break;

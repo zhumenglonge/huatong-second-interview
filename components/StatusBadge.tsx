@@ -4,6 +4,8 @@ const LABEL: Record<TaskStatus, string> = {
   queued: '排队中',
   running: '执行中',
   waiting: '等待澄清',
+  planning: '生成计划',
+  awaiting_approval: '等待批准',
   success: '成功',
   failed: '失败',
   cancelled: '已取消',

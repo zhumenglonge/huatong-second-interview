@@ -13,6 +13,8 @@ import {
   RefreshCw,
   RotateCcw,
   X,
+  Download,
+  ExternalLink,
 } from 'lucide-react';
 import { useTaskStore } from '@/lib/store';
 
@@ -179,6 +181,18 @@ export function RightPanel() {
                     <span className="tracker-file-icon"><FileText size={16} /></span>
                     <span className="tracker-item-name">{artifact.name}</span>
                     <span className="tracker-file-size">{formatSize(artifact.size)}</span>
+                    <a
+                      className="tracker-file-action"
+                      href={`/api/tasks/${artifact.taskId}/artifacts/${artifact.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="预览"
+                    ><ExternalLink size={14} /></a>
+                    <a
+                      className="tracker-file-action"
+                      href={`/api/tasks/${artifact.taskId}/artifacts/${artifact.id}?download=1`}
+                      title="下载"
+                    ><Download size={14} /></a>
                   </div>
                 ))}
               </div>
