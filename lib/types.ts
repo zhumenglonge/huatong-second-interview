@@ -10,6 +10,28 @@ export type TaskStatus =
 
 export type StepStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelled';
 
+export type ModelProfile =
+  | 'Auto'
+  | 'Qwen3.8-Max'
+  | 'Qwen3.8-Flash'
+  | 'Qwen3.7-Max'
+  | 'Qwen3.7-Plus'
+  | 'Qwen3.7-Flash'
+  | 'DeepSeek-V4-Pro'
+  | 'DeepSeek-Flash'
+  | 'GLM-5.3'
+  | 'GLM-5.3-Flash'
+  | 'GLM-5.2'
+  | 'Kimi-K3'
+  | 'Kimi-K2.8-Preview'
+  | 'MiniMax-M2.7';
+
+export interface AgentRunOptions {
+  model: ModelProfile;
+  skills: string[];
+  auto: boolean;
+}
+
 export interface TaskRow {
   id: string;
   title: string;

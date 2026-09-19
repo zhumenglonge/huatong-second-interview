@@ -14,7 +14,7 @@ import {
 } from './db';
 import { publish } from './events';
 import { runQoderAgent, type AgentHandle } from './provider';
-import type { TaskStatus } from './types';
+import type { AgentRunOptions, TaskStatus } from './types';
 
 /**
  * Background task runner. Owns the lifecycle of a real Qoder agent session:
@@ -80,7 +80,11 @@ export function sandboxFor(taskId: string): string {
  * Start (or restart for retry) the real agent for a task.
  * Fire-and-forget: returns immediately; the session runs in the background.
  */
-export function startTask(taskId: string, input: string) {
+export function startTask(
+  taskId: string,
+  input: string,
+  options: AgentRunOptions = { model: 'Auto', skills: [], auto: false },
+) {
   if (registry().has(taskId)) return;
 
   const cwd = sandboxFor(taskId);
@@ -128,6 +132,7 @@ export function startTask(taskId: string, input: string) {
     try {
       const res = await runQoderAgent({
         input,
+        options,
         cwd,
         signal: abort.signal,
         emit: emitWithTables,

@@ -7,6 +7,7 @@ import {
   query,
   type Query,
 } from '@qodercn-ai/qodercn-agent-sdk';
+import type { AgentRunOptions } from './types';
 
 /**
  * Real-agent provider backed by the QoderCN Agent SDK (CN endpoints, quota).
@@ -33,6 +34,26 @@ Rules:
 - Keep each visible message concise: state what you are doing, then do it.
 - End with a short summary of findings plus a list of the files you produced.`;
 
+const SKILL_GUIDANCE: Record<string, string> = {
+  literature: 'Search, compare, and synthesize biomedical literature with explicit citations and evidence quality.',
+  pubmed: 'Use PubMed-oriented query design, PMID tracking, and structured evidence extraction.',
+  geo: 'Work as a GEO/SRA dataset specialist: accession discovery, metadata inspection, download planning, and reproducible analysis.',
+  differential_expression: 'Use rigorous differential-expression workflows, QC, appropriate statistics, multiple-testing correction, and volcano/heatmap outputs.',
+  single_cell: 'Apply single-cell RNA-seq best practices including QC, normalization, clustering, annotation, and marker analysis.',
+  protein_design: 'Apply protein sequence/structure analysis and rational design principles; clearly label computational hypotheses.',
+};
+
+function systemPromptFor(options: AgentRunOptions): string {
+  const selected = options.skills.map((skill) => SKILL_GUIDANCE[skill]).filter(Boolean);
+  const skillSection = selected.length
+    ? `\nSelected specialist skills for this turn:\n${selected.map((item) => `- ${item}`).join('\n')}`
+    : '';
+  const autoSection = options.auto
+    ? '\nAuto mode is enabled: make safe, reasonable assumptions when clarification is optional, and continue autonomously.'
+    : '';
+  return `${SYSTEM_PROMPT}${skillSection}${autoSection}`;
+}
+
 /**
  * Prefer the verified bundled CN CLI binary (process transport) over the
  * in-process Worker runtime: it exactly mirrors the `qoderclicn` invocation
@@ -48,12 +69,13 @@ function resolveCliPath(): string | undefined {
 
 export async function runQoderAgent(opts: {
   input: string;
+  options: AgentRunOptions;
   cwd: string;
   signal: AbortSignal;
   emit: Emit;
   onReady?: (handle: AgentHandle) => void;
 }): Promise<{ ok: boolean; error?: string }> {
-  const { input, cwd, signal, emit, onReady } = opts;
+  const { input, options, cwd, signal, emit, onReady } = opts;
 
   const abortController = new AbortController();
   const onAbort = () => abortController.abort();
@@ -74,9 +96,10 @@ export async function runQoderAgent(opts: {
         abortController,
         includePartialMessages: true,
         maxTurns: 30,
+        model: options.model,
         permissionMode: 'bypassPermissions',
         allowDangerouslySkipPermissions: true,
-        systemPrompt: SYSTEM_PROMPT,
+        systemPrompt: systemPromptFor(options),
         ...(resolveCliPath() ? { pathToQoderCLIExecutable: resolveCliPath() } : {}),
         stderr: (data) => console.error('[qodercn:stderr]', data),
       },

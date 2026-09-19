@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { appendEvent, createTask, listTasks } from '@/lib/db';
 import { publish } from '@/lib/events';
 import { startTask } from '@/lib/runner';
+import type { AgentRunOptions, ModelProfile } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,9 +12,28 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const body = (await req.json().catch(() => null)) as { input?: string } | null;
+  const body = (await req.json().catch(() => null)) as
+    | { input?: string; options?: Partial<AgentRunOptions> }
+    | null;
   const input = String(body?.input ?? '').trim();
   if (!input) return NextResponse.json({ error: 'input required' }, { status: 400 });
+
+  const availableModels: ModelProfile[] = [
+    'Auto', 'Qwen3.8-Max', 'Qwen3.8-Flash', 'Qwen3.7-Max', 'Qwen3.7-Plus',
+    'Qwen3.7-Flash', 'DeepSeek-V4-Pro', 'DeepSeek-Flash', 'GLM-5.3',
+    'GLM-5.3-Flash', 'GLM-5.2', 'Kimi-K3', 'Kimi-K2.8-Preview', 'MiniMax-M2.7',
+  ];
+  const requestedModel = body?.options?.model;
+  const model = availableModels.includes(requestedModel as ModelProfile)
+    ? (requestedModel as ModelProfile)
+    : 'Auto';
+  const options: AgentRunOptions = {
+    model,
+    skills: Array.isArray(body?.options?.skills)
+      ? body.options.skills.map(String).filter(Boolean).slice(0, 8)
+      : [],
+    auto: Boolean(body?.options?.auto),
+  };
 
   const id = randomUUID();
   const task = createTask(id, input.slice(0, 40), input);
@@ -25,7 +45,7 @@ export async function POST(req: Request) {
   publish(id, { seq, type: 'block.add', block: { id: `user-${id}`, kind: 'user', text: input } } as any);
 
   // fire-and-forget: the real agent session runs in the background
-  startTask(id, input);
+  startTask(id, input, options);
 
   return NextResponse.json({ task }, { status: 201 });
 }

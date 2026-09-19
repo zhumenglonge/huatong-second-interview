@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { applyEventToBlocks } from './reducer';
-import type { ArtifactRow, Block, ServerEvent, TaskRow, TaskStatus } from './types';
+import type { AgentRunOptions, ArtifactRow, Block, ServerEvent, TaskRow, TaskStatus } from './types';
 
 interface TaskState {
   tasks: TaskRow[];
@@ -15,7 +15,7 @@ interface TaskState {
   refreshTasks: () => Promise<void>;
   newTask: () => void;
   selectTask: (id: string) => Promise<void>;
-  send: (input: string) => Promise<void>;
+  send: (input: string, options?: AgentRunOptions) => Promise<void>;
   cancel: () => Promise<void>;
   retry: () => Promise<void>;
 }
@@ -66,13 +66,24 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     openStream(id);
   },
 
-  send: async (input) => {
-    const res = await fetch('/api/tasks', {
+  send: async (input, options) => {
+    const currentId = get().currentId;
+    const endpoint = currentId ? `/api/tasks/${currentId}/messages` : '/api/tasks';
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input }),
+      body: JSON.stringify({ input, options }),
     });
     if (!res.ok) return;
+
+    if (currentId) {
+      // The existing EventSource receives the appended user block and the
+      // continued agent run. Resync as a backstop when the stream is offline.
+      if (!get().connected) await reloadSnapshot(currentId);
+      await get().refreshTasks();
+      return;
+    }
+
     const { task } = (await res.json()) as { task: TaskRow };
     await get().refreshTasks();
     await get().selectTask(task.id);
