@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Biomni Lab · 二面汇报</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --panel-2: #1c2129;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --red: #f85149;
+    --yellow: #d29922;
+    --purple: #bc8cff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-snap-type: y proximity; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+    line-height: 1.7;
+  }
+  /* ── 顶部进度条 + 目录条 ──────────────────────── */
+  .progress { position: fixed; top: 0; left: 0; height: 2px; width: 0; background: var(--accent); z-index: 20; }
+  .topbar {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(13, 17, 23, .92); backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 24px;
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  }
+  .topbar .brand { font-size: 14px; font-weight: 700; letter-spacing: 1px; white-space: nowrap; }
+  .topbar .brand em { font-style: normal; color: var(--accent); }
+  .toc { display: flex; gap: 6px; flex-wrap: wrap; }
+  .toc a {
+    font-size: 13px; color: var(--muted); text-decoration: none;
+    border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; white-space: nowrap;
+  }
+  .toc a:hover { color: var(--text); }
+  .toc a.on { color: var(--accent); border-color: var(--accent); }
+  /* ── 文档流版式 ───────────────────────────────── */
+  .page { max-width: 980px; margin: 0 auto; padding: 32px 24px 80px; }
+  section { scroll-margin-top: 64px; scroll-snap-align: start; min-height: 100vh; min-height: 100svh; }
+  section + section { margin-top: 36px; }
+  .card-sheet {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 14px; padding: 56px 52px;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .kicker {
+    font-size: 13px; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--accent); font-weight: 600; margin-bottom: 10px;
+  }
+  h2 { font-size: 32px; font-weight: 700; margin-bottom: 10px; line-height: 1.35; }
+  .lede { font-size: 17px; color: var(--muted); margin-bottom: 34px; }
+  .ref { font-size: 13px; color: var(--muted); border-top: 1px solid var(--border); margin-top: 28px; padding-top: 12px; }
+  /* ── 共享组件 ─────────────────────────────────── */
+  .cols { display: flex; gap: 22px; align-items: stretch; flex-wrap: wrap; }
+  .cols > * { flex: 1; min-width: 260px; }
+  .block {
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 20px 22px;
+  }
+  .block h4 { font-size: 17px; margin-bottom: 10px; }
+  .block p { font-size: 15px; color: var(--muted); line-height: 1.8; }
+  .block p + p { margin-top: 10px; }
+  .block strong { color: var(--text); }
+  .tag { display: inline-block; font-size: 13px; padding: 3px 12px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); margin-right: 4px; }
+  .tag.keep { color: var(--green); border-color: var(--green); }
+  .tag.improve { color: var(--accent); border-color: var(--accent); }
+  .tag.cut { color: var(--red); border-color: var(--red); }
+  .tag.new { color: var(--purple); border-color: var(--purple); }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--border); vertical-align: top; line-height: 1.75; }
+  th { color: var(--muted); font-weight: 600; font-size: 13.5px; }
+  code, .mono { font-family: "SF Mono", Menlo, monospace; font-size: 14px; background: var(--bg); padding: 1px 6px; border-radius: 4px; }
+  pre { font-family: "SF Mono", Menlo, monospace; font-size: 13.5px; line-height: 1.55; color: var(--text); overflow-x: auto; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+  .shot { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+  .shot img { width: 100%; border-radius: 6px; border: 1px solid var(--border); display: block; }
+  .shot figcaption { font-size: 13px; color: var(--muted); text-align: center; margin-top: 8px; }
+  .flow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .flow .node { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; font-size: 14.5px; white-space: nowrap; }
+  .flow .node small { color: var(--muted); }
+  .flow .node.hl { border-color: var(--accent); color: var(--accent); }
+  .flow .arr { color: var(--muted); font-size: 16px; }
+  /* ── 思维导图（纵向堆叠，横向展开） ───────────── */
+  .tree, .tree ul { display: flex; list-style: none; margin: 0; padding: 0; }
+  .tree { align-items: center; }
+  .tree ul { flex-direction: column; align-items: flex-start; padding-left: 26px; }
+  .tree li { display: flex; flex-direction: row; align-items: center; }
+  .tree > li { padding: 4px 0; }
+  .tree ul > li::before { content: ''; align-self: stretch; width: 11px; border-left: 1px solid var(--border); flex: none; }
+  .tree ul > li:first-child::before { border-left-color: transparent; border-top: 1px solid var(--border); border-top-left-radius: 8px; }
+  .tree ul > li:last-child::before { border-left-color: transparent; border-bottom: 1px solid var(--border); border-bottom-left-radius: 8px; }
+  .tree ul > li::after { content: ''; width: 13px; border-top: 1px solid var(--border); flex: none; }
+  .tree .nd { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 13px; font-size: 15px; white-space: nowrap; margin: 3px 0; flex: none; }
+  .tree .b1 > .nd { border-left: 3px solid var(--accent); }
+  .tree .b2 > .nd { border-left: 3px solid var(--green); }
+  .tree .b3 > .nd { border-left: 3px solid var(--purple); }
+  .tree .b4 > .nd { border-left: 3px solid var(--yellow); }
+  .tree .nd.leaf { font-size: 14px; color: var(--muted); padding: 4px 11px; }
+  .tree .nd.leaf strong { color: var(--text); font-weight: 600; }
+  .tree .root { background: var(--panel-2); border: 1px solid var(--accent); border-radius: 8px; padding: 14px 18px; font-size: 17px; font-weight: 700; flex: none; line-height: 1.4; }
+  .tree .root small { display: block; font-size: 12.5px; font-weight: 400; color: var(--muted); }
+  .badge { font-size: 12px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); margin-left: 6px; }
+  .badge.p0 { color: var(--green); border-color: var(--green); }
+  .badge.p1 { color: var(--purple); border-color: var(--purple); }
+  /* ── 封面 ─────────────────────────────────────── */
+  .cover { padding: 72px 40px 64px; text-align: center; }
+  .cover .label { font-size: 14px; letter-spacing: 3px; color: var(--accent); font-weight: 600; margin-bottom: 22px; }
+  .cover h1 { font-size: 52px; line-height: 1.25; margin-bottom: 20px; }
+  .cover h1 em { font-style: normal; color: var(--accent); }
+  .cover .sub { font-size: 19px; color: var(--muted); margin: 0 auto 36px; max-width: 720px; }
+  .cover .sub strong { color: var(--text); }
+  .cover .meta { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .cover .hint { margin-top: 44px; font-size: 13px; color: var(--muted); }
+  /* ── 打印 ─────────────────────────────────────── */
+  @media print {
+    @page { margin: 12mm; }
+    body { background: #fff; color: #1f2328; }
+    :root { --bg:#fff; --panel:#f6f8fa; --panel-2:#eaeef2; --border:#d0d7de; --text:#1f2328; --muted:#59636e; --accent:#0969da; --green:#1a7f37; --red:#cf222e; --yellow:#9a6700; --purple:#8250df; }
+    .topbar, .progress { display: none; }
+    .page { max-width: none; padding: 0; }
+    section { page-break-inside: avoid; min-height: 0; }
+    .card-sheet { border: none; padding: 8px 0; }
+    section + section { margin-top: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+<header class="topbar">
+  <span class="brand">BIOMNI LAB · <em>二面汇报</em></span>
+  <nav class="toc" id="toc">
+    <a href="#s1">产品分析</a>
+    <a href="#s2">功能全景</a>
+    <a href="#s3">功能取舍</a>
+    <a href="#s4">前后端闭环</a>
+    <a href="#s5">任务画布</a>
+    <a href="#s6">AI 辅助开发</a>
+    <a href="#s7">边界与规划</a>
+    <a href="#s8">提交物</a>
+  </nav>
+</header>
+
+<div class="page">
+
+  <!-- ════ 封面 ════ -->
+  <section class="card-sheet cover">
+    <div class="label">华通科技 · AI-NATIVE 前端 &amp; 分析工程师二面</div>
+    <h1>Biomni Lab<br><em>一个更清晰的 AI 科研任务工作台</em></h1>
+    <p class="sub">逆向 Biomni 的对话式 Agent 产品形态，复刻核心任务闭环，<br>并新增 Biomni 网页版没有的能力：<strong>实时任务画布（工作流 DAG）</strong>。</p>
+    <div class="meta">
+      <span class="tag">Next.js 15 + React 19</span>
+      <span class="tag">真实 QoderCN Agent</span>
+      <span class="tag">SSE + 事件溯源</span>
+      <span class="tag">React Flow 画布</span>
+      <span class="tag">汇报 ≈ 6 分钟</span>
+    </div>
+    <p class="hint">向下滚动阅读 · 或 ⌘P 打印为 PDF 提交</p>
+  </section>
+
+  <!-- ════ S1 产品分析 ════ -->
+  <section class="card-sheet" id="s1">
+    <div class="kicker">01 · 产品分析</div>
+    <h2>Biomni 是什么：对话驱动的科研 Agent</h2>
+    <p class="lede">目标用户是生物医学研究者 —— 一句话下达多步骤科研任务，Agent 端到端执行并交付可下载结果 + 可追溯过程。</p>
+    <div style="display: flex; flex-direction: column; gap: 22px;">
+      <div>
+        <h4 style="font-size:16px; color:var(--muted); margin-bottom:12px;">核心用户路径（登录后实测，sess_57f6831fbe2d）</h4>
+        <div class="flow">
+          <span class="node">自然语言输入<br><small>+ 附件/文件夹</small></span><span class="arr">→</span>
+          <span class="node">澄清<br><small>结构化问答</small></span><span class="arr">→</span>
+          <span class="node">计划文档<br><small>Approve 审批</small></span><span class="arr">→</span>
+          <span class="node hl">分步执行<br><small>待办打勾 + traces</small></span><span class="arr">→</span>
+          <span class="node">结果文件<br><small>文件树/下载</small></span><span class="arr">→</span>
+          <span class="node">迭代<br><small>fork / 追问</small></span>
+        </div>
+      </div>
+      <div class="cols">
+        <div class="block">
+          <h4>一次任务的状态机</h4>
+          <p><span class="dot" style="background:var(--muted)"></span>input　<span class="dot" style="background:var(--yellow)"></span>clarifying　<span class="dot" style="background:var(--accent)"></span>planning / running　<span class="dot" style="background:var(--green)"></span>success　<span class="dot" style="background:var(--red)"></span>failed(retry)　cancelled</p>
+          <p>刷新恢复是<strong>产品级特性</strong>：reload 后先拉快照渲染，仍 running 则重订阅续传，而非重跑。</p>
+        </div>
+        <div class="block">
+          <h4>产品洞察 → 改进切入点</h4>
+          <p>Biomni 的痛点是<strong>过程半黑盒</strong>：线性待办无法表达步骤依赖、并行分支、哪一步卡住。→ 这正是画布的机会（第 05 节）。</p>
+          <p>DOM 实测 <code>hasReactFlow: false</code>：官方网页版没有画布，我们的创新是差异化的。</p>
+        </div>
+      </div>
+    </div>
+    <p class="ref">详见 analysis.md §1–3</p>
+  </section>
+
+  <!-- ════ S2 功能全景（思维导图） ════ -->
+  <section class="card-sheet" id="s2">
+    <div class="kicker">02 · 功能全景</div>
+    <h2>改进版原型做了什么：四大域 · 20 项能力</h2>
+    <p class="lede">绿色 = 对应 Biomni 的保留项，紫色 = 我们的差异化新增 —— 全部真实可运行，非规划图。</p>
+    <div style="overflow-x: auto; padding: 8px 0;">
+      <ul class="tree">
+        <li>
+          <span class="root">Biomni Lab<small>改进版原型功能全景</small></span>
+          <ul>
+            <li class="b1"><span class="nd">对话与会话</span>
+              <ul>
+                <li><span class="nd leaf"><strong>自然语言任务输入</strong> + 文件/文件夹上传<span class="badge p0">保留</span></span></li>
+                <li><span class="nd leaf"><strong>Block 流会话渲染</strong> 思考正文/轨迹/错误<span class="badge p0">P0</span></span></li>
+                <li><span class="nd leaf">SSE 流式打字机 + 断线快照续传<span class="badge p0">保留</span></span></li>
+                <li><span class="nd leaf">澄清问答 + 计划卡片 Approve<span class="badge p1">P1</span></span></li>
+              </ul>
+            </li>
+            <li class="b2"><span class="nd">任务执行</span>
+              <ul>
+                <li><span class="nd leaf"><strong>真实 QoderCN Agent</strong> 非 Mock 执行<span class="badge p1">新增</span></span></li>
+                <li><span class="nd leaf">任务五态 + 失败重试 / 真取消<span class="badge p0">P0</span></span></li>
+                <li><span class="nd leaf">事件溯源落库（先写后广播）<span class="badge p0">P0</span></span></li>
+                <li><span class="nd leaf">任务级沙箱目录隔离 + 产物扫描<span class="badge p0">P0</span></span></li>
+                <li><span class="nd leaf">结果文件树下载 + 运行计时<span class="badge p0">保留</span></span></li>
+              </ul>
+            </li>
+            <li class="b3"><span class="nd">任务画布 ★</span>
+              <ul>
+                <li><span class="nd leaf">React Flow DAG 节点展示 + 状态脉冲<span class="badge p1">P1</span></span></li>
+                <li><span class="nd leaf">拖拽 / 连线 / 缩放平移 / MiniMap<span class="badge p1">P1</span></span></li>
+                <li><span class="nd leaf">编排态：计划编译进 Agent prompt<span class="badge p1">P1</span></span></li>
+                <li><span class="nd leaf">节点详情 ↔ 会话流 / 结果联动<span class="badge p1">P1</span></span></li>
+              </ul>
+            </li>
+            <li class="b4"><span class="nd">工作台与效率</span>
+              <ul>
+                <li><span class="nd leaf">项目侧栏：分组 / 搜索 / 拖拽调宽<span class="badge p0">保留</span></span></li>
+                <li><span class="nd leaf">Skill Hub 本地技能注册表<span class="badge p1">P1</span></span></li>
+                <li><span class="nd leaf">步骤标题人话化摘要<span class="badge p1">新增</span></span></li>
+                <li><span class="nd leaf">笔记闭环<span class="badge p1">新增</span></span></li>
+                <li><span class="nd leaf">三档 LLM 模式切换<span class="badge p1">新增</span></span></li>
+                <li><span class="nd leaf">中/英多语言<span class="badge p1">新增</span></span></li>
+                <li><span class="nd leaf">暗色主题 + 布局偏好持久化<span class="badge p1">新增</span></span></li>
+              </ul>
+            </li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+    <p class="ref">代码对应 lib/ 与 components/ 模块</p>
+  </section>
+
+  <!-- ════ S3 功能取舍与降级 ════ -->
+  <section class="card-sheet" id="s3">
+    <div class="kicker">03 · 功能取舍</div>
+    <h2>19 项功能逐一裁决：保核心、做差异、砍边缘</h2>
+    <p class="lede">取舍原则：P0 保核心 loop 与状态完整 → P1 做画布差异化 → 其余一律降级/删除。</p>
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <table>
+        <tr><th style="width:100px">裁决</th><th>功能</th><th style="width:42%">理由</th></tr>
+        <tr>
+          <td><span class="tag keep">保留 ×6</span></td>
+          <td>任务输入与会话流 · 分步执行+待办 · 流式 traces · 结果文件树 · <strong>加载/失败/重试/取消/刷新恢复五态</strong> · 计划审批</td>
+          <td>产品核心闭环 + 作业硬指标，状态完整性优先</td>
+        </tr>
+        <tr>
+          <td><span class="tag new">新增 ×2</span></td>
+          <td><strong>任务画布（DAG 编排 + 实时状态）</strong> · Skill Hub 本地技能中心</td>
+          <td>Biomni 实测没有画布 → 真差异化；技能从远程市场降级为可审计的本地注册表</td>
+        </tr>
+        <tr>
+          <td><span class="tag improve">简化 ×2</span></td>
+          <td>澄清（多轮 → 单轮）· traces（全量 → 摘要+折叠）</td>
+          <td>保留 waiting 状态语义，砍实现成本</td>
+        </tr>
+        <tr>
+          <td><span class="tag cut">删减/降级</span></td>
+          <td>云盘 · 计算面板 · 分享协作 · 多模型 · 搜索/网格 · fork/追问建议 · 赞踩反馈</td>
+          <td>依赖账号/多用户/云资源，与核心 loop 无关</td>
+        </tr>
+      </table>
+      <div class="block">
+        <h4>降级方案（不可复现 ≠ 放弃）</h4>
+        <p>登录鉴权 → 单用户本地运行｜云端沙箱 → 每任务独立沙箱目录 + 真实本地 Agent 执行｜对象存储 → 本地文件 + SQLite 元数据。每项在 README 标注<strong>真实接口替换点</strong>（如 <code>executeStep()</code> → 沙箱调用）。</p>
+      </div>
+    </div>
+    <p class="ref">详见 analysis.md §4 / §7</p>
+  </section>
+
+  <!-- ════ S4 端到端闭环 ════ -->
+  <section class="card-sheet" id="s4">
+    <div class="kicker">04 · 前后端闭环</div>
+    <h2>真实 Agent + 事件溯源，不是 Mock 演示</h2>
+    <p class="lede">后端调用真实 QoderCN Agent（非 mock），每个任务在独立沙箱内规划、调工具、落盘产物。</p>
+    <div class="block" style="margin-bottom: 18px;">
+      <pre>
+┌──────────┐  REST   ┌────────────────────────┐
+│ Browser  │────────▶│ Next.js Route Handlers │
+│ React 19 │         │  创建/快照/取消/重试     │
+│ Zustand  │◀────────│  /stream  → SSE        │
+└──────────┘   SSE   └───────────┬────────────┘
+                                 │
+              ┌──────────────────┼───────────────┐
+              ▼                  ▼               ▼
+        ┌─────────┐  emit  ┌──────────┐    ┌──────────┐
+        │ runner  │───────▶│ provider │───▶│QoderCN   │
+        │ 生命周期 │        │ 消息→事件 │    │SDK 真Agent│
+        └────┬────┘        └──────────┘    └────┬─────┘
+   appendEvent(先落库)                          │ 工具调用
+              ▼                                 ▼
+        ┌─────────┐ publish ┌────────┐   ┌─────────────┐
+        │ SQLite  │────────▶│ pub/sub│   │ .data/       │
+        │ EventLog│         └────────┘   │ sandboxes/…  │
+        └─────────┘                      └─────────────┘</pre>
+    </div>
+    <div class="cols">
+      <div class="block">
+        <h4><span class="dot" style="background:var(--accent)"></span>事件溯源 = 刷新恢复的根基</h4>
+        <p>每个事件先写 SQLite <code>EventLog</code>（单调 seq）再广播；重连时先订阅、再重放 <code>after=seq</code>、按 seq 去重 → 断线/刷新后画面与实时流严格一致。纯 reducer 跨端共享，快照与实时流渲染同一份折叠逻辑。</p>
+      </div>
+      <div class="block">
+        <h4><span class="dot" style="background:var(--green)"></span>全部真实验证过</h4>
+        <p>Bash→Write→Bash 工具链真实执行，沙箱落盘 <code>data.csv</code> + <code>report.md</code>；112 条事件入库重放；running 中取消 → <code>interrupt()</code> 真生效；五态全部真实触发。</p>
+      </div>
+      <div class="block">
+        <h4><span class="dot" style="background:var(--yellow)"></span>工程边界</h4>
+        <p>Token 仅存服务端环境变量，不进前端/仓库；任务沙箱目录隔离；服务重启残留任务标记 failed，杜绝僵尸态。</p>
+      </div>
+    </div>
+    <p class="ref">架构图与时序见 README §四</p>
+  </section>
+
+  <!-- ════ S5 任务画布 ════ -->
+  <section class="card-sheet" id="s5">
+    <div class="kicker">05 · 前端创新（方案一）</div>
+    <h2>任务画布：把线性待办升维成实时 DAG</h2>
+    <p class="lede">节点 = 步骤，边 = 依赖；Agent 在干什么、卡在哪一步，一眼可见 —— 直接服务"严谨、可控、可追踪"。</p>
+    <figure class="shot" style="margin-bottom: 18px;">
+      <img src="../.data/plan-run-readable.png" alt="任务画布实时运行">
+      <figcaption>运行态画布：输入 → 步骤节点实时变色 → 产物</figcaption>
+    </figure>
+    <div class="cols" style="margin-bottom: 18px;">
+      <div class="block">
+        <h4>交互能力</h4>
+        <p>节点展示 · 拖拽布局 · 连线编排 · 缩放/平移 · MiniMap · 点击节点看该步 traces/产物</p>
+      </div>
+      <div class="block">
+        <h4>状态着色</h4>
+        <p><span class="dot" style="background:var(--muted)"></span>pending　<span class="dot" style="background:var(--accent)"></span>running(脉冲)　<span class="dot" style="background:var(--green)"></span>success　<span class="dot" style="background:var(--red)"></span>failed　<span class="dot" style="background:var(--yellow)"></span>waiting　cancelled(划除)</p>
+      </div>
+      <div class="block">
+        <h4>两种模式</h4>
+        <p><strong>观察态</strong>：实时状态推送，只读；<strong>编排态</strong>：审批前可增删节点、改连线，计划编译进 Agent prompt</p>
+      </div>
+    </div>
+    <table>
+      <tr><th style="width:110px">题目要求</th><th>我们的答案</th></tr>
+      <tr><td><strong>组件</strong></td><td><code>CanvasView</code>(React Flow 容器) / <code>StepNode</code>(memo 自定义节点) / <code>NodeDrawer</code>，与右栏面板共享同一 store</td></tr>
+      <tr><td><strong>状态管理</strong></td><td>Zustand 单一 store，按节点 id 局部更新；SSE 事件 → store action；布局(视图态)与任务(数据态)分离</td></tr>
+      <tr><td><strong>性能</strong></td><td>节点 memo + 视口裁剪；SSE tick 批量合并再写 store，避免整图 re-render；大图降级只读静态布局</td></tr>
+    </table>
+    <p class="ref">analysis.md §8</p>
+  </section>
+
+  <!-- ════ S6 AI 辅助开发 ════ -->
+  <section class="card-sheet" id="s6">
+    <div class="kicker">06 · AI 辅助开发与质量</div>
+    <h2>不是让 AI 替我写项目，而是把它放进工程流程</h2>
+    <p class="lede">OpenSpec 规划 → 模块边界委派 → Prompt 约束 → 验证修正，每轮只推进一个垂直切片。</p>
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="flow">
+        <span class="node">读上下文<br><small>作业/DOM/SDK 类型</small></span><span class="arr">→</span>
+        <span class="node">OpenSpec 拆解<br><small>proposal·design·spec·tasks</small></span><span class="arr">→</span>
+        <span class="node">按模块委派<br><small>Provider/Runner/UI…</small></span><span class="arr">→</span>
+        <span class="node">自动验证<br><small>test·typecheck·冒烟</small></span><span class="arr">→</span>
+        <span class="node">人工 Review 修正<br><small>补约束·记录经验</small></span>
+      </div>
+      <div class="cols">
+        <div class="block">
+          <h4>规格驱动（OpenSpec）</h4>
+          <p>需求先变成有边界、有验收标准的任务。例：「新任务空白会话」change 拆成 4 组任务、6/6 完成后归档，规格同步进主 specs。</p>
+        </div>
+        <div class="block">
+          <h4>Prompt 四要素</h4>
+          <p>Context（读哪些文件/类型）· Task（只改哪个模块）· Constraints（不能动什么、必须复用什么）· Acceptance（跑哪些命令判定完成）。</p>
+        </div>
+        <div class="block">
+          <h4>质量门禁</h4>
+          <p><code>npm test</code> 10/10 · <code>typecheck</code> 0 错 · ESLint · 系统冒烟（创建→轮询→SSE 去重）· 人工回归（画布/取消/刷新恢复）。全部结果见 <code>ai_usage.md</code>。</p>
+        </div>
+      </div>
+      <p style="font-size:16px; color:var(--muted);">关键原则：<strong style="color:var(--text)">先读上下文再让 AI 动手；先跑验证再接受结果。</strong>AI 生成代码必须可检查、可回归。</p>
+    </div>
+    <p class="ref">ai_usage.md</p>
+  </section>
+
+  <!-- ════ S7 已知限制与下一步 ════ -->
+  <section class="card-sheet" id="s7">
+    <div class="kicker">07 · 边界与规划</div>
+    <h2>诚实的边界，清晰的下一步</h2>
+    <p class="lede">已知限制均来自真实取舍，不是遗漏；每条都有对应的解法设计。</p>
+    <div class="cols" style="margin-bottom: 18px;">
+      <div class="block">
+        <h4><span class="dot" style="background:var(--red)"></span>已知限制</h4>
+        <p>· 单机内存态 runner，未做分布式队列<br>· SSE 单向，运行中不能插话（以重试/新任务表达）<br>· 画布编排是 prompt 软约束，非硬性调度引擎<br>· 产物只列文件名/大小，未内联预览<br>· 无鉴权多租户</p>
+      </div>
+      <div class="block">
+        <h4><span class="dot" style="background:var(--green)"></span>下一步（P1）</h4>
+        <p>· runner 外置 worker + 任务队列 → 多实例部署<br>· 画布硬编排：步骤级调度引擎，运行时动态改图<br>· 产物内联预览（图片/表格）+ 运行中追加指令</p>
+      </div>
+    </div>
+    <div class="block">
+      <h4>一句话总结</h4>
+      <p style="font-size: 17px; color: var(--text);">我不是让 AI 替我写一个完整项目，而是把 AI 放进一套<strong style="color:var(--accent)">有规划、有边界、有验证</strong>的工程流程 —— 交付的是一个能真实跑通核心闭环、并带差异化创新的改进版原型。</p>
+    </div>
+    <p class="ref">README §六</p>
+  </section>
+
+  <!-- ════ S8 提交物清单 ════ -->
+  <section class="card-sheet" id="s8">
+    <div class="kicker">附 · 提交物索引</div>
+    <h2>仓库里有什么</h2>
+    <p class="lede">Git 仓库完整可运行：clone → npm install → 授权 → npm run dev。</p>
+    <table style="margin-bottom: 18px;">
+      <tr><th style="width:200px">提交物</th><th>内容</th></tr>
+      <tr><td><code>analysis.md</code></td><td>Biomni 功能清单、用户流程图、状态机、19 项功能取舍、技术推断、降级方案</td></tr>
+      <tr><td><code>README.md</code></td><td>启动方式、环境变量、技术栈理由、架构图、Mock 范围与真实接口替换点、验证记录</td></tr>
+      <tr><td><code>ai_usage.md</code></td><td>AI 使用记录：给了哪些上下文、如何 Review/测试/修正</td></tr>
+      <tr><td>代码本体</td><td><code>app/</code> API routes · <code>lib/</code> runner/provider/reducer/store · <code>components/</code> 三栏 UI + 画布 · 单测</td></tr>
+      <tr><td>本文件</td><td><code>ppt/index.html</code>（可滚动汇报页 / 打印 PDF 备用）</td></tr>
+    </table>
+    <div class="block">
+      <h4>安全边界</h4>
+      <p>Token 仅存在于服务端环境变量与本机 CLI 登录态，未进入任何前端代码与提交记录。</p>
+    </div>
+    <p class="ref">BIOMNI LAB / 二面汇报 · 谢谢</p>
+  </section>
+
+</div>
+
+<script>
+  // 顶部阅读进度条
+  const bar = document.getElementById('progress');
+  addEventListener('scroll', () => {
+    const h = document.documentElement;
+    bar.style.width = (h.scrollTop / (h.scrollHeight - h.clientHeight) * 100) + '%';
+  }, { passive: true });
+  // 目录高亮：当前视口内的章节
+  const links = [...document.querySelectorAll('.toc a')];
+  const sections = links.map(a => document.querySelector(a.getAttribute('href')));
+  const spy = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (!e.isIntersecting) return;
+      links.forEach((a, i) => a.classList.toggle('on', sections[i] === e.target));
+    });
+  }, { rootMargin: '-25% 0px -65% 0px' });
+  sections.forEach(s => spy.observe(s));
+</script>
+</body>
+</html>

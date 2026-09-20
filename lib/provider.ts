@@ -78,6 +78,37 @@ function resolveCliPath(): string | undefined {
   return fs.existsSync(candidate) ? candidate : undefined;
 }
 
+/**
+ * Detect QoderCN authentication / quota failures from SDK- or CLI-level error
+ * text so we can surface a friendly Chinese recovery guide in the canvas
+ * instead of a raw English stack. The CN CLI reports a missing login as
+ * "No qodercli login found"; an invalid/expired PAT or an out-of-quota account
+ * typically surfaces as a 401 / unauthorized / token / quota message.
+ */
+function isAuthFailure(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes('no qodercli login') ||
+    m.includes('login found') ||
+    m.includes('not logged in') ||
+    m.includes('please login') ||
+    m.includes('qoderclicn login') ||
+    m.includes('unauthorized') ||
+    m.includes('authentication') ||
+    m.includes('access token') ||
+    m.includes('personal access token') ||
+    m.includes('credential') ||
+    m.includes('401') ||
+    m.includes('quota') ||
+    m.includes('insufficient') ||
+    m.includes('rejected by the api') ||
+    (m.includes('token') && (m.includes('invalid') || m.includes('expired') || m.includes('missing') || m.includes('rejected')))
+  );
+}
+
+/** Structured failure codes the runner maps to user-facing guidance. */
+export type AgentErrorCode = 'auth_required';
+
 export async function runQoderAgent(opts: {
   input: string;
   options: AgentRunOptions;
@@ -86,7 +117,7 @@ export async function runQoderAgent(opts: {
   signal: AbortSignal;
   emit: Emit;
   onReady?: (handle: AgentHandle) => void;
-}): Promise<{ ok: boolean; error?: string; outcome?: 'waiting' | 'awaiting_approval' }> {
+}): Promise<{ ok: boolean; error?: string; code?: AgentErrorCode; outcome?: 'waiting' | 'awaiting_approval' }> {
   const { input, options, mode = 'execute', cwd, signal, emit, onReady } = opts;
   const appliedSkills = loadEnabledSkills(options.skills).map((skill) => skill.id);
   const requestedSkills = options.skills.length ? new Set(options.skills) : null;
@@ -102,12 +133,16 @@ export async function runQoderAgent(opts: {
   if (signal.aborted) onAbort();
   else signal.addEventListener('abort', onAbort, { once: true });
 
-  const auth = process.env.QODERCN_PERSONAL_ACCESS_TOKEN
-    ? accessTokenFromEnv()
-    : qodercliAuth();
+  // The CN CLI often surfaces a missing login / out-of-quota error only through
+  // the child-process stderr stream rather than a thrown exception. Flag it
+  // here so the generic failure paths below can still map to auth_required.
+  let stderrAuthHint = false;
 
   let q: Query;
   try {
+    const auth = process.env.QODERCN_PERSONAL_ACCESS_TOKEN
+      ? accessTokenFromEnv()
+      : qodercliAuth();
     q = query({
       prompt: input,
       options: {
@@ -122,11 +157,19 @@ export async function runQoderAgent(opts: {
         allowDangerouslySkipPermissions: true,
         systemPrompt: systemPromptFor(options, mode, cwd),
         ...(resolveCliPath() ? { pathToQoderCLIExecutable: resolveCliPath() } : {}),
-        stderr: (data) => console.error('[qodercn:stderr]', data),
+        stderr: (data) => {
+          if (isAuthFailure(typeof data === 'string' ? data : String(data))) stderrAuthHint = true;
+          console.error('[qodercn:stderr]', data);
+        },
       },
     });
   } catch (e) {
-    return { ok: false, error: `failed to start Qoder agent: ${(e as Error).message}` };
+    const msg = (e as Error).message;
+    return {
+      ok: false,
+      error: `failed to start Qoder agent: ${msg}`,
+      ...(isAuthFailure(msg) ? { code: 'auth_required' as const } : {}),
+    };
   }
 
   onReady?.({ interrupt: () => q.interrupt().then(() => undefined) });
@@ -294,7 +337,12 @@ export async function runQoderAgent(opts: {
             }
             return { ok: true };
           }
-          return { ok: false, error: (r.errors ?? []).join('; ') || `agent error: ${r.subtype}` };
+          const errMsg = (r.errors ?? []).join('; ') || `agent error: ${r.subtype}`;
+          return {
+            ok: false,
+            error: errMsg,
+            ...(isAuthFailure(errMsg) || stderrAuthHint ? { code: 'auth_required' as const } : {}),
+          };
         }
 
         default:
@@ -302,10 +350,17 @@ export async function runQoderAgent(opts: {
       }
     }
     // stream ended without an explicit result message
-    return { ok: !signal.aborted, error: signal.aborted ? undefined : 'agent stream ended without a result' };
+    if (signal.aborted) return { ok: true };
+    if (stderrAuthHint) return { ok: false, error: 'agent stream ended without a result', code: 'auth_required' as const };
+    return { ok: false, error: 'agent stream ended without a result' };
   } catch (e) {
     if (signal.aborted) return { ok: false };
-    return { ok: false, error: (e as Error).message };
+    const msg = (e as Error).message;
+    return {
+      ok: false,
+      error: msg,
+      ...(isAuthFailure(msg) || stderrAuthHint ? { code: 'auth_required' as const } : {}),
+    };
   } finally {
     signal.removeEventListener('abort', onAbort);
   }

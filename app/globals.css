@@ -304,6 +304,71 @@ body {
   white-space: pre-wrap;
 }
 
+/* ---- auth-required card (in-place qoderclicn login trigger) ---- */
+.auth-card {
+  border: 1px solid var(--fail);
+  background: var(--status-fail-bg);
+  color: var(--fail);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.auth-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+.auth-button {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-radius: 7px;
+  padding: 5px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.auth-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.auth-pending {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+.auth-hint {
+  font-size: 13px;
+  line-height: 1.5;
+}
+.auth-button-link {
+  display: inline-block;
+  text-decoration: none;
+}
+.auth-url {
+  display: block;
+  max-width: 100%;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  word-break: break-all;
+  user-select: all;
+}
+.auth-muted {
+  font-size: 13px;
+  color: var(--muted);
+}
+.auth-failed {
+  color: var(--fail);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 /* ---- input ---- */
 .inputbar {
   border-top: 1px solid var(--line);

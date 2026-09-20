@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Check, CheckCircle2, ChevronRight, Clipboard, Download, ExternalLink, FileText, ListChecks, LoaderCircle, Paperclip, Send, ShieldCheck, TerminalSquare, XCircle } from 'lucide-react';
 import type { Block } from '@/lib/types';
 import { useTaskStore } from '@/lib/store';
@@ -173,6 +173,120 @@ function PlanCard({ block }: { block: Block }) {
   );
 }
 
+/**
+ * Auth-required card: a single "登录 Qoder CN" button that drives the
+ * server-side `qoderclicn login` OAuth flow (see lib/auth.ts). The server opens
+ * the authorization page automatically once the device URL is captured; the
+ * inline link is only a fallback. When login succeeds the card fires an automatic
+ * retry of the failed task and then hides itself.
+ */
+function AuthRequiredCard({ block }: { block: Block }) {
+  const activeProjectId = useTaskStore((state) => state.activeProjectId);
+  const selectTask = useTaskStore((state) => state.selectTask);
+  const taskId = String(block.meta?.taskId ?? '');
+  const [status, setStatus] = useState('idle');
+  const [url, setUrl] = useState('');
+  const [error, setError] = useState('');
+  const [checking, setChecking] = useState(true);
+  const retriedRef = useRef(false);
+
+  const apply = (s: { status?: string; url?: string; error?: string }) => {
+    setStatus(s.status || 'idle');
+    setUrl(s.url || '');
+    setError(s.error || '');
+  };
+
+  // Adopt an in-flight / completed login (page refresh, or a sibling card started it).
+  //
+  // CRITICAL GUARD: if the server already reports `success` when this card mounts,
+  // another card (or a previous visit) owns that login. We must hide silently and
+  // NOT fire another auto-retry — otherwise every new auth_required block from a
+  // subsequent failed run re-adopts the same persisted `success` and loops
+  // infinitely (selectTask + SSE churn => visible flash/freeze).
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/auth/status')
+      .then((res) => res.json())
+      .then((s) => {
+        if (!alive) return;
+        if (s.status === 'pending') {
+          setStatus('pending');
+          setUrl(s.url || '');
+          setError('');
+        } else if (s.status === 'success') {
+          // Pre-arm the retry guard so the transition effect below does NOT fire.
+          retriedRef.current = true;
+          setStatus('success');
+        }
+        // 'idle' / 'failed': keep the initial idle state and show a fresh login button.
+      })
+      .catch(() => {})
+      .finally(() => { if (alive) setChecking(false); });
+    return () => { alive = false; };
+  }, []);
+
+  // Poll while a login is pending until the CLI process reports success/failure.
+  useEffect(() => {
+    if (status !== 'pending') return;
+    const timer = window.setInterval(() => {
+      fetch('/api/auth/status').then((res) => res.json()).then(apply).catch(() => {});
+    }, 1500);
+    return () => window.clearInterval(timer);
+  }, [status]);
+
+  // On success: retry the failed task exactly once, then hide (render null below).
+  useEffect(() => {
+    if (status !== 'success' || retriedRef.current) return;
+    retriedRef.current = true;
+    if (!taskId) return;
+    const query = activeProjectId ? `?projectId=${encodeURIComponent(activeProjectId)}` : '';
+    void fetch(`/api/tasks/${taskId}/retry${query}`, { method: 'POST' })
+      .then(() => selectTask(taskId))
+      .catch(() => {});
+  }, [status, taskId, activeProjectId, selectTask]);
+
+  async function beginLogin() {
+    setError('');
+    setStatus('pending');
+    try {
+      const res = await fetch('/api/auth/login', { method: 'POST' });
+      apply(await res.json());
+    } catch {
+      setStatus('failed');
+      setError('无法发起登录,请在终端手动执行 npm run login');
+    }
+  }
+
+  // Hide the card once the user is logged in, and while probing server state
+  // (avoids a stale login button flashing on historical cards before the probe returns).
+  if (checking || status === 'success') return null;
+
+  return (
+    <div className="auth-card">
+      {status === 'pending' ? (
+        <div className="auth-pending">
+          <span className="auth-hint">登录进程已在服务端启动。点击下方链接,在浏览器中完成授权(成功后本卡片会自动关闭并重新提交任务):</span>
+          {url ? (
+            <>
+              <a className="auth-button auth-button-link" href={url} target="_blank" rel="noreferrer noopener">打开授权页 ↗</a>
+              <code className="auth-url">{url}</code>
+            </>
+          ) : (
+            <span className="auth-muted">正在获取授权链接…</span>
+          )}
+        </div>
+      ) : (
+        <div className="auth-actions">
+          <button type="button" className="auth-button" onClick={() => void beginLogin()}>
+            登录 Qoder CN
+          </button>
+          {status === 'failed' && <span className="auth-failed">{error || '登录失败,请重试'}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function BlockView({ block }: { block: Block }) {
   switch (block.kind) {
     case 'user':
@@ -232,6 +346,7 @@ export function BlockView({ block }: { block: Block }) {
       );
 
     case 'error':
+      if (block.meta?.code === 'auth_required') return <AuthRequiredCard block={block} />;
       return <div className="error-box">{block.text}</div>;
 
     default:

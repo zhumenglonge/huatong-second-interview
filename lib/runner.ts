@@ -27,6 +27,13 @@ interface RunningTask {
   handle?: AgentHandle;
 }
 
+/**
+ * Short fallback caption for the auth-required state. The interactive login
+ * button lives in BlockView's AuthRequiredCard (keyed off meta.code);
+ * this text is only what a plain renderer (or history after refresh) shows.
+ */
+const AUTH_REQUIRED_GUIDE = '未检测到 Qoder CN 登录授权,请登录后重试。';
+
 const globalForRunner = globalThis as unknown as {
   __biomniRunning?: Map<string, RunningTask>;
   __biomniCleaned?: boolean;
@@ -167,8 +174,17 @@ export function startTask(
         setTaskStatus(taskId, 'success');
       } else {
         setTaskStatus(taskId, 'failed', res.error ?? 'agent failed');
+        const isAuth = res.code === 'auth_required';
+        const errorText = isAuth ? AUTH_REQUIRED_GUIDE : (res.error ?? 'agent failed');
         emit(taskId, 'block.add', {
-          block: { id: `err-${randomUUID()}`, kind: 'error', text: res.error ?? 'agent failed' },
+          block: {
+            id: `err-${randomUUID()}`,
+            kind: 'error',
+            text: errorText,
+            // Tag auth failures so BlockView renders the in-place login button;
+            // other errors stay as plain text.
+            meta: isAuth ? { code: 'auth_required', taskId } : undefined,
+          },
         });
       }
     } catch (e) {

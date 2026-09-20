@@ -10,6 +10,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "login": "node_modules/@qodercn-ai/qodercn-agent-sdk/dist/_bundled/qoderclicn login",
     "setup:cli": "QODER_INSTALL_BUNDLED_CLI=1 node node_modules/@qodercn-ai/qodercn-agent-sdk/scripts/postinstall.cjs"
   },
   "dependencies": {
