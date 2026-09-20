@@ -12,6 +12,7 @@ import { Sidebar } from '@/components/Sidebar';
 import { TaskOverview } from '@/components/TaskOverview';
 import { startBlankChat, type MainView } from '@/lib/blank-chat';
 import { useTaskStore } from '@/lib/store';
+import { useLocale, useTheme } from '@/lib/i18n';
 
 export default function Page() {
   const refreshTasks = useTaskStore((s) => s.refreshTasks);
@@ -20,11 +21,13 @@ export default function Page() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [layoutOpen, setLayoutOpen] = useState(false);
   const [layoutVisibility, setLayoutVisibility] = useState<LayoutVisibility>({
-    todo: false,
-    results: false,
-    compute: false,
-    notes: false,
+    todo: true,
+    results: true,
+    compute: true,
+    notes: true,
   });
+  const { locale, setLocale, t } = useLocale();
+  const { theme, toggle: toggleTheme } = useTheme();
   const router = useRouter();
 
   const handleNewChat = () => startBlankChat(newTask, setView);
@@ -39,13 +42,13 @@ export default function Page() {
       <Sidebar collapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} onShowOverview={() => setView('overview')} onShowConversation={() => setView('conv')} />
       <main className="main-area">
         <div className="col-head">
-          <span>Biomni Lab · 改进版原型</span>
+          <span>{t.title}</span>
           <span className="tabs">
             <button className={view === 'conv' ? 'primary' : ''} onClick={() => setView('conv')}>
-              会话流
+              {t.conv}
             </button>
             <button className={view === 'canvas' ? 'primary' : ''} onClick={() => setView('canvas')}>
-              任务画布
+              {t.canvas}
             </button>
           </span>
           <LayoutPopover
@@ -54,7 +57,10 @@ export default function Page() {
             onOpenChange={setLayoutOpen}
             onVisibilityChange={(id: LayoutSectionId, value: boolean) => setLayoutVisibility((state) => ({ ...state, [id]: value }))}
           />
-          <span className="muted">real QoderCN Agent backend</span>
+          <span className="header-actions">
+            <button className="header-tool" type="button" onClick={() => setLocale(locale === 'zh' ? 'en' : 'zh')} aria-label={locale === 'zh' ? t.switchToEn : t.switchToZh} title={locale === 'zh' ? t.switchToEn : t.switchToZh}>{locale === 'zh' ? 'EN' : '中'}</button>
+            <button className="header-tool" type="button" onClick={toggleTheme} aria-label={theme === 'light' ? t.themeDark : t.themeLight} title={theme === 'light' ? t.themeDark : t.themeLight}>{theme === 'light' ? '☾' : '☀'}</button>
+          </span>
         </div>
         {view === 'conv' ? <Conversation /> : view === 'canvas' ? <CanvasView /> : <TaskOverview onSelectTask={() => setView('conv')} />}
         {view !== 'overview' && <InputBar />}

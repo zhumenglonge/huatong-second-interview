@@ -16,21 +16,9 @@ import {
   Plus,
 } from 'lucide-react';
 import { useTaskStore } from '@/lib/store';
+import { timeAgo, useLocale } from '@/lib/i18n';
 import type { ProjectRow, TaskRow } from '@/lib/types';
 
-function timeAgo(ts: number): string {
-  const diff = Math.max(0, Date.now() - ts);
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return '刚刚';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
-}
-
-const FALLBACK_PROJECTS: ProjectRow[] = [
-  { id: 'quick-tasks', name: '快速任务', createdAt: 0, updatedAt: 0, isDefault: true },
-];
 type Project = ProjectRow;
 
 function ProjectDialog({
@@ -48,6 +36,7 @@ function ProjectDialog({
 }) {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
+  const { t } = useLocale();
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -65,7 +54,7 @@ function ProjectDialog({
         aria-labelledby="project-dialog-title"
         onClick={(event) => event.stopPropagation()}
       >
-        <h3 id="project-dialog-title">选择项目</h3>
+        <h3 id="project-dialog-title">{t.selectProject}</h3>
         {projects.map((project) => (
           <button
             key={project.id}
@@ -83,14 +72,14 @@ function ProjectDialog({
         {!creating ? (
           <button className="project-dialog-item project-create-item" onClick={() => setCreating(true)} type="button">
             <Plus size={16} />
-            <span>新建项目</span>
+            <span>{t.newProject}</span>
           </button>
         ) : (
           <form className="project-create-form" onSubmit={async (event) => { event.preventDefault(); if (!name.trim()) return; await onCreate(name.trim()); }}>
-            <input value={name} onChange={(event) => setName(event.target.value)} placeholder="项目名称" maxLength={80} autoFocus aria-label="新项目名称" />
+            <input value={name} onChange={(event) => setName(event.target.value)} placeholder={t.projectName} maxLength={80} autoFocus aria-label={t.newProjectName} />
             <div className="project-create-actions">
-              <button className="project-primary-btn" type="submit" disabled={!name.trim()}>创建</button>
-              <button className="project-secondary-btn" type="button" onClick={() => { setCreating(false); setName(''); }}>取消</button>
+              <button className="project-primary-btn" type="submit" disabled={!name.trim()}>{t.create}</button>
+              <button className="project-secondary-btn" type="button" onClick={() => { setCreating(false); setName(''); }}>{t.cancel}</button>
             </div>
           </form>
         )}
@@ -114,6 +103,7 @@ function ProjectSettingsDialog({
 }) {
   const [name, setName] = useState(project.name);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const { t } = useLocale();
   const canDelete = !project.isDefault && !hasTasks;
 
   useEffect(() => {
@@ -128,32 +118,32 @@ function ProjectSettingsDialog({
     <div className="project-dialog-overlay" onClick={onClose} role="presentation">
       <div className="project-dialog project-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="project-settings-title" onClick={(event) => event.stopPropagation()}>
         <div className="project-dialog-heading">
-          <h3 id="project-settings-title">项目设置</h3>
-          <button className="dialog-close-btn" onClick={onClose} type="button" aria-label="关闭">
+          <h3 id="project-settings-title">{t.projectSettings}</h3>
+          <button className="dialog-close-btn" onClick={onClose} type="button" aria-label={t.close}>
             <X size={16} />
           </button>
         </div>
         <label className="project-setting-field">
-          <span>项目名称</span>
+          <span>{t.projectName}</span>
           <input value={name} onChange={(event) => setName(event.target.value)} maxLength={80} autoFocus />
         </label>
         <button className="project-primary-btn" type="button" disabled={!name.trim() || name.trim() === project.name} onClick={() => { onRename(name.trim()); onClose(); }}>
-          <Pencil size={14} /> 保存名称
+          <Pencil size={14} /> {t.saveName}
         </button>
         <div className="project-danger-zone">
           <div>
-            <strong>删除项目</strong>
-            <span>{project.id === 'quick' ? '默认项目不可删除' : hasTasks ? '请先处理项目中的任务' : '删除后无法恢复'}</span>
+            <strong>{t.deleteProject}</strong>
+            <span>{project.id === 'quick' ? t.deleteReasonDefault : hasTasks ? t.deleteReasonHasTasks : t.deleteReasonNone}</span>
           </div>
           {!confirmDelete ? (
             <button className="project-danger-btn" disabled={!canDelete} type="button" onClick={() => setConfirmDelete(true)}>
-              <Trash2 size={14} /> 删除
+              <Trash2 size={14} /> {t.delete}
             </button>
           ) : (
             <div className="project-delete-confirm">
-              <span>确认删除？</span>
-              <button className="project-danger-btn" type="button" onClick={() => { onDelete(); onClose(); }}>确认</button>
-              <button className="project-secondary-btn" type="button" onClick={() => setConfirmDelete(false)}>取消</button>
+              <span>{t.confirmDelete}</span>
+              <button className="project-danger-btn" type="button" onClick={() => { onDelete(); onClose(); }}>{t.confirm}</button>
+              <button className="project-secondary-btn" type="button" onClick={() => setConfirmDelete(false)}>{t.cancel}</button>
             </div>
           )}
         </div>
@@ -171,6 +161,7 @@ function TaskItem({
   active: boolean;
   onClick: () => void;
 }) {
+  const { locale, t } = useLocale();
   return (
     <button
       className={`task-item-v2 ${active ? 'active' : ''}`}
@@ -181,7 +172,7 @@ function TaskItem({
     >
       <span className={`task-dot status-${task.status}`} />
       <span className="task-item-title">{task.title}</span>
-      <span className="task-item-time">{timeAgo(task.updatedAt)}</span>
+      <span className="task-item-time">{timeAgo(task.updatedAt, locale, t)}</span>
     </button>
   );
 }
@@ -237,6 +228,7 @@ export function Sidebar({ collapsed, onCollapsedChange, onShowOverview }: { coll
   const currentId = useTaskStore((state) => state.currentId);
   const selectTask = useTaskStore((state) => state.selectTask);
   const newTask = useTaskStore((state) => state.newTask);
+  const { t } = useLocale();
 
   const [localCollapsed, setLocalCollapsed] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -310,10 +302,10 @@ export function Sidebar({ collapsed, onCollapsedChange, onShowOverview }: { coll
   const visibleTasks = normalizedQuery ? tasks.filter((task) => `${task.title} ${task.input}`.toLowerCase().includes(normalizedQuery)) : tasks;
   const waitingTasks = visibleTasks.filter((task) => task.status === 'waiting');
   const otherTasks = visibleTasks.filter((task) => task.status !== 'waiting');
-  const availableProjects = projects.length ? projects : FALLBACK_PROJECTS;
+  const availableProjects = projects.length ? projects : [{ id: 'quick-tasks', name: t.quickTasks, createdAt: 0, updatedAt: 0, isDefault: true } satisfies ProjectRow];
   const project = activeProjectId ?? availableProjects[0]?.id ?? 'quick';
   const currentProject = availableProjects.find((item) => item.id === project) ?? availableProjects[0];
-  const projectName = currentProject?.name ?? 'Quick Tasks';
+  const projectName = currentProject?.name ?? t.quickTasks;
   const currentProjectHasTasks = tasks.length > 0;
 
   const renameProject = (name: string) => {
@@ -348,17 +340,17 @@ export function Sidebar({ collapsed, onCollapsedChange, onShowOverview }: { coll
               onClick={() => setDialogOpen(true)}
               aria-haspopup="dialog"
               aria-expanded={dialogOpen}
-              aria-label="选择项目"
+              aria-label={t.selectProject}
               type="button"
             >
-              <span className="project-switcher-label">Project</span>
+              <span className="project-switcher-label">{t.projectEyebrow}</span>
               <span className="project-switcher-name">{projectName}</span>
             </button>
             <button
               className="project-action-btn"
               onClick={() => setSettingsOpen(true)}
-              title="项目设置"
-              aria-label="项目设置"
+              title={t.projectSettings}
+              aria-label={t.projectSettings}
               type="button"
             >
               <Settings2 size={16} />
@@ -366,7 +358,7 @@ export function Sidebar({ collapsed, onCollapsedChange, onShowOverview }: { coll
             <button
               className="sidebar-collapse-btn"
               onClick={() => setCollapsed(true)}
-              title="折叠面板"
+              title={t.collapsePanel}
               type="button"
             >
               <PanelLeft size={16} />
@@ -376,27 +368,27 @@ export function Sidebar({ collapsed, onCollapsedChange, onShowOverview }: { coll
           <section className="sidebar-section">
             <div className="section-header">
               <div className="section-header-left">
-                <button className={`section-icon-btn ${tasksOpen ? '' : 'collapsed'}`} title="折叠任务" aria-label="折叠任务" aria-expanded={tasksOpen} onClick={() => setTasksOpen((value) => !value)} type="button">
+                <button className={`section-icon-btn ${tasksOpen ? '' : 'collapsed'}`} title={t.collapseTasks} aria-label={t.collapseTasks} aria-expanded={tasksOpen} onClick={() => setTasksOpen((value) => !value)} type="button">
                   <ChevronDown size={14} />
                 </button>
-                <span className="section-header-title">任务</span>
+                <span className="section-header-title">{t.tasks}</span>
               </div>
               <div className="section-header-actions">
-                <button className="section-icon-btn" title="搜索" aria-label="搜索任务" aria-expanded={searchOpen} onClick={() => setSearchOpen((value) => !value)} type="button">
+                <button className="section-icon-btn" title={t.search} aria-label={t.searchTasks} aria-expanded={searchOpen} onClick={() => setSearchOpen((value) => !value)} type="button">
                   <Search size={14} />
                 </button>
-                <button className="section-icon-btn" title="查看全部" aria-label="查看全部任务" type="button" onClick={() => onShowOverview?.()}>
+                <button className="section-icon-btn" title={t.viewAll} aria-label={t.viewAllTasks} type="button" onClick={() => onShowOverview?.()}>
                   <List size={14} />
                 </button>
-                <button className="section-icon-btn" title="新建任务" aria-label="新建任务" onClick={newTask} type="button"><Plus size={14} /></button>
+                <button className="section-icon-btn" title={t.newTask} aria-label={t.newTask} onClick={newTask} type="button"><Plus size={14} /></button>
               </div>
             </div>
             {tasksOpen && <div className="section-body">
-              {searchOpen && <div className="sidebar-task-search"><Search size={14} /><input autoFocus aria-label="搜索任务" placeholder="搜索任务" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} /><button type="button" aria-label="清空搜索" onClick={() => { setSearchQuery(''); setSearchOpen(false); }}><X size={14} /></button></div>}
-              {visibleTasks.length === 0 && <div className="cloud-empty">{tasks.length ? '没有找到匹配的任务' : '暂无任务'}</div>}
+              {searchOpen && <div className="sidebar-task-search"><Search size={14} /><input autoFocus aria-label={t.searchTasks} placeholder={t.searchTasks} value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} /><button type="button" aria-label={t.clearSearch} onClick={() => { setSearchQuery(''); setSearchOpen(false); }}><X size={14} /></button></div>}
+              {visibleTasks.length === 0 && <div className="cloud-empty">{tasks.length ? t.noMatchingTasks : t.noTasks}</div>}
               {waitingTasks.length > 0 && (
                 <TaskGroup
-                  title="等待输入"
+                  title={t.waitingInput}
                   count={waitingTasks.length}
                   tasks={waitingTasks}
                   currentId={currentId}
@@ -405,7 +397,7 @@ export function Sidebar({ collapsed, onCollapsedChange, onShowOverview }: { coll
               )}
               {otherTasks.length > 0 && (
                 <TaskGroup
-                  title="最近"
+                  title={t.recent}
                   tasks={otherTasks}
                   currentId={currentId}
                   onSelect={(id) => void selectTask(id)}
@@ -419,24 +411,24 @@ export function Sidebar({ collapsed, onCollapsedChange, onShowOverview }: { coll
               <div className="section-header-left">
                 <button
                   className={`section-icon-btn ${cloudOpen ? '' : 'collapsed'}`}
-                  title="折叠"
+                  title={t.collapse}
                   onClick={() => setCloudOpen((value) => !value)}
                   type="button"
                   aria-expanded={cloudOpen}
                 >
                   <ChevronDown size={14} />
                 </button>
-                <span className="section-header-title">云盘</span>
+                <span className="section-header-title">{t.cloud}</span>
               </div>
               <div className="section-header-actions">
-                <button className="section-icon-btn" title="上传" type="button">
+                <button className="section-icon-btn" title={t.upload} type="button">
                   <Upload size={14} />
                 </button>
               </div>
             </div>
             {cloudOpen && (
               <div className="section-body">
-                <div className="cloud-empty">No files yet</div>
+                <div className="cloud-empty">{t.noFiles}</div>
               </div>
             )}
           </section>

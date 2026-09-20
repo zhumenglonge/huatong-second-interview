@@ -16,6 +16,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { useTaskStore } from '@/lib/store';
+import { useLocale } from '@/lib/i18n';
 
 import type { LayoutSectionId, LayoutVisibility } from './LayoutPopover';
 
@@ -27,6 +28,7 @@ function PanelSection({
   open,
   onToggle,
   onClose,
+  closeLabel,
   actions,
   children,
 }: {
@@ -35,6 +37,7 @@ function PanelSection({
   open: boolean;
   onToggle: () => void;
   onClose: () => void;
+  closeLabel: string;
   actions?: ReactNode;
   children: ReactNode;
 }) {
@@ -47,7 +50,7 @@ function PanelSection({
         </button>
         <div className="tracker-section-actions">
           {actions}
-          <button type="button" title="关闭" onClick={onClose}><X size={15} /></button>
+          <button type="button" title={closeLabel} onClick={onClose}><X size={15} /></button>
         </div>
       </div>
       {open && <div className="tracker-section-body">{children}</div>}
@@ -83,12 +86,13 @@ export function RightPanel({
   const taskError = useTaskStore((state) => state.taskError);
   const currentId = useTaskStore((state) => state.currentId);
   const selectTask = useTaskStore((state) => state.selectTask);
+  const { t } = useLocale();
 
   const [panelWidth, setPanelWidth] = useState(368);
   const widthRef = useRef(panelWidth);
   const resizing = useRef(false);
   const [open, setOpen] = useState<Record<SectionId, boolean>>({
-    todo: true, results: true, compute: false, notes: false,
+    todo: true, results: true, compute: true, notes: true,
   });
 
   const steps = blocks.filter((block) => block.kind === 'step');
@@ -137,9 +141,9 @@ export function RightPanel({
 
       <div className="tracker-sections">
         {visible.todo && (
-          <PanelSection id="todo" title="待办" open={open.todo} onToggle={() => toggle('todo')} onClose={() => close('todo')}>
+          <PanelSection id="todo" title={t.todo} open={open.todo} onToggle={() => toggle('todo')} onClose={() => close('todo')} closeLabel={t.close}>
             {steps.length === 0 ? (
-              <EmptyState icon={<Flashlight size={54} />} title="暂无待办列表" description="多步骤任务会显示待办项" />
+              <EmptyState icon={<Flashlight size={54} />} title={t.todoEmptyTitle} description={t.todoEmptyDesc} />
             ) : (
               <div className="tracker-list">
                 {steps.map((step, index) => (
@@ -157,18 +161,19 @@ export function RightPanel({
         {visible.results && (
           <PanelSection
             id="results"
-            title="结果"
+            title={t.results}
             open={open.results}
             onToggle={() => toggle('results')}
             onClose={() => close('results')}
+            closeLabel={t.close}
             actions={
-              <button type="button" title="从存储刷新结果" disabled={!currentId} onClick={() => currentId && void selectTask(currentId)}>
+              <button type="button" title={t.refreshResults} disabled={!currentId} onClick={() => currentId && void selectTask(currentId)}>
                 <RefreshCw size={14} />
               </button>
             }
           >
             {artifacts.length === 0 ? (
-              <EmptyState icon={<Network size={58} />} title="暂无结果" description="文件将显示在此处" />
+              <EmptyState icon={<Network size={58} />} title={t.resultsEmptyTitle} description={t.resultsEmptyDesc} />
             ) : (
               <div className="tracker-list artifact-list">
                 {artifacts.map((artifact) => (
@@ -181,12 +186,12 @@ export function RightPanel({
                       href={`/api/tasks/${artifact.taskId}/artifacts/${artifact.id}`}
                       target="_blank"
                       rel="noreferrer"
-                      title="预览"
+                      title={t.preview}
                     ><ExternalLink size={14} /></a>
                     <a
                       className="tracker-file-action"
                       href={`/api/tasks/${artifact.taskId}/artifacts/${artifact.id}?download=1`}
-                      title="下载"
+                      title={t.download}
                     ><Download size={14} /></a>
                   </div>
                 ))}
@@ -199,19 +204,20 @@ export function RightPanel({
         {visible.compute && (
           <PanelSection
             id="compute"
-            title="计算"
+            title={t.compute}
             open={open.compute}
             onToggle={() => toggle('compute')}
             onClose={() => close('compute')}
-            actions={<button type="button" title="计算资源说明"><CircleHelp size={14} /></button>}
+            closeLabel={t.close}
+            actions={<button type="button" title={t.computeHelp}><CircleHelp size={14} /></button>}
           >
-            <EmptyState icon={<Cpu size={48} />} title="暂无计算作业" description="Agent 运行时将显示资源状态" />
+            <EmptyState icon={<Cpu size={48} />} title={t.computeEmptyTitle} description={t.computeEmptyDesc} />
           </PanelSection>
         )}
 
         {visible.notes && (
-          <PanelSection id="notes" title="笔记" open={open.notes} onToggle={() => toggle('notes')} onClose={() => close('notes')}>
-            <EmptyState icon={<NotebookPen size={46} />} title="暂无笔记" description="任务笔记将显示在此处" />
+          <PanelSection id="notes" title={t.notes} open={open.notes} onToggle={() => toggle('notes')} onClose={() => close('notes')} closeLabel={t.close}>
+            <EmptyState icon={<NotebookPen size={46} />} title={t.notesEmptyTitle} description={t.notesEmptyDesc} />
           </PanelSection>
         )}
       </div>

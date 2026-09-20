@@ -2,11 +2,13 @@
 
 import { useEffect, useRef } from 'react';
 import { useTaskStore } from '@/lib/store';
+import { useLocale } from '@/lib/i18n';
 import { BlockView } from './BlockView';
 
 export function Conversation() {
   const blocks = useTaskStore((s) => s.blocks);
   const currentId = useTaskStore((s) => s.currentId);
+  const { t } = useLocale();
   const boxRef = useRef<HTMLDivElement>(null);
 
   // stick to bottom while streaming (unless the user scrolled up)
@@ -22,9 +24,7 @@ export function Conversation() {
       <div className="conv">
         {!currentId && (
           <div className="empty">
-            选择左侧任务，或在下方输入一个研究任务开始。
-            <br />
-            后端为真实 Qoder Agent（非 mock），会在沙箱中规划、执行并产出文件。
+            {t.convEmpty}
           </div>
         )}
         {blocks.map((b) => (

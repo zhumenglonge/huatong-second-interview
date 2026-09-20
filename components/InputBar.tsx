@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {
-  AtSign, Check, ChevronDown, CircleHelp, FileUp, Paperclip,
+  AtSign, Check, ChevronDown, CircleHelp, FileUp, LoaderCircle, Paperclip,
   Plus, Send, Sparkles, Square, X,
 } from 'lucide-react';
 import { useTaskStore } from '@/lib/store';
+import { useLocale } from '@/lib/i18n';
 import type { ModelProfile, UploadRef } from '@/lib/types';
 
 const MODELS: Array<{ id: ModelProfile; label: string; description: string }> = [
@@ -49,10 +50,16 @@ export function InputBar() {
   const sendTask = useTaskStore((state) => state.send);
   const cancel = useTaskStore((state) => state.cancel);
   const retry = useTaskStore((state) => state.retry);
+  const { t } = useLocale();
   // Planning is an active agent run too: keep the composer editable for
   // drafting, but prevent a second submit and expose the cancel action.
   const running = status === 'running' || status === 'queued' || status === 'planning';
   const failed = status === 'failed';
+  const loadingLabel = status === 'queued'
+    ? t.loadingQueued
+    : status === 'planning'
+      ? t.loadingPlanning
+      : t.loadingRunning;
   const activeModel = MODELS.find((item) => item.id === model) ?? MODELS[0];
   useEffect(() => {
     void fetch('/api/skills').then((response) => response.json()).then((body: { skills?: Array<{ id: string; name: string; description: string }> }) => {
@@ -83,7 +90,7 @@ export function InputBar() {
       setText('');
       setAttachments([]);
     } else {
-      setComposerError('发送失败，请检查服务连接后重试。');
+      setComposerError(t.sendError);
     }
   };
 
@@ -100,7 +107,7 @@ export function InputBar() {
     try {
       const response = await fetch('/api/uploads', { method: 'POST', body: form });
       const body = (await response.json()) as { uploads?: UploadRef[]; error?: string };
-      if (!response.ok) throw new Error(body.error || '上传失败');
+      if (!response.ok) throw new Error(body.error || t.uploadError);
       setAttachments((current) => [...current, ...(body.uploads ?? [])]);
     } catch (error) {
       setComposerError((error as Error).message);
@@ -118,7 +125,14 @@ export function InputBar() {
 
   return (
     <div className="composer-wrap" ref={composerRef}>
-      <div className="composer-tip"><Sparkles size={13} /> Type @ in the chat to mention databases, files, tools, or skill</div>
+      {running && (
+        <div className="composer-status" role="status" aria-live="polite">
+          <span className="composer-status-icon" aria-hidden="true"><LoaderCircle size={14} /></span>
+          <span>{loadingLabel}</span>
+          <span className="composer-status-dots" aria-hidden="true"><i /> <i /> <i /></span>
+        </div>
+      )}
+      <div className="composer-tip"><Sparkles size={13} /> {t.composerTip}</div>
       <div
         className={`composer ${running ? 'is-running' : ''}`}
         onDragOver={(event) => { event.preventDefault(); event.currentTarget.classList.add('is-dragging'); }}
@@ -136,7 +150,7 @@ export function InputBar() {
               return skill ? (
                 <span className="composer-chip" key={id}>
                   <AtSign size={12} />{skill.label}
-                  <button type="button" onClick={() => toggleSkill(id)} aria-label={`Remove ${skill.label}`}><X size={12} /></button>
+                  <button type="button" onClick={() => toggleSkill(id)} aria-label={`${t.remove} ${skill.label}`}><X size={12} /></button>
                 </span>
               ) : null;
             })}
@@ -145,16 +159,16 @@ export function InputBar() {
                 <Paperclip size={12} />
                 <span>{attachment.name}</span>
                 <small>{attachment.size < 1024 ? `${attachment.size} B` : `${(attachment.size / 1024).toFixed(1)} KB`}</small>
-                <button type="button" onClick={() => setAttachments((items) => items.filter((item) => item.token !== attachment.token))} aria-label={`Remove ${attachment.name}`}><X size={12} /></button>
+                <button type="button" onClick={() => setAttachments((items) => items.filter((item) => item.token !== attachment.token))} aria-label={`${t.remove} ${attachment.name}`}><X size={12} /></button>
               </span>
             ))}
-            {uploading && <span className="composer-chip upload-chip"><span className="upload-spinner" />上传中…</span>}
+            {uploading && <span className="composer-chip upload-chip"><span className="upload-spinner" />{t.uploading}</span>}
           </div>
         )}
 
         <textarea
           value={text}
-          placeholder="问我任何问题..."
+          placeholder={t.askAnything}
           onChange={(event) => {
             const value = event.target.value;
             setText(value);
@@ -172,14 +186,14 @@ export function InputBar() {
         <div className="composer-toolbar">
           <div className="composer-tools">
             <div className="composer-menu-anchor">
-              <button type="button" className="composer-icon-btn" aria-label="Add to your message" onClick={() => {
+              <button type="button" className="composer-icon-btn" aria-label={t.add} onClick={() => {
                 setAddOpen((value) => !value); setModelOpen(false); setSkillOpen(false);
               }}><Plus size={18} /></button>
               {addOpen && (
                 <div className="composer-popover add-popover">
-                  <button type="button" onClick={openSkills}><AtSign size={16} /><span><b>Skills and tools</b><small>Mention a specialist capability</small></span></button>
-                  <button type="button" onClick={() => { setAddOpen(false); fileInputRef.current?.click(); }}><FileUp size={16} /><span><b>Upload files</b><small>Attach files to this task</small></span></button>
-                  <button type="button" onClick={() => { setAddOpen(false); folderInputRef.current?.click(); }}><Paperclip size={16} /><span><b>Attach folder</b><small>Upload a folder recursively</small></span></button>
+                  <button type="button" onClick={openSkills}><AtSign size={16} /><span><b>{t.skillsTools}</b><small>{t.mentionCapability}</small></span></button>
+                  <button type="button" onClick={() => { setAddOpen(false); fileInputRef.current?.click(); }}><FileUp size={16} /><span><b>{t.uploadFiles}</b><small>{t.attachTask}</small></span></button>
+                  <button type="button" onClick={() => { setAddOpen(false); folderInputRef.current?.click(); }}><Paperclip size={16} /><span><b>{t.attachFolder}</b><small>{t.uploadFolder}</small></span></button>
                 </div>
               )}
             </div>
@@ -194,13 +208,13 @@ export function InputBar() {
             />
             <label className="auto-control">
               <input type="checkbox" checked={auto} onChange={(event) => setAuto(event.target.checked)} />
-              <span className="auto-switch" /><span>自动</span>
+              <span className="auto-switch" /><span>{t.auto}</span>
             </label>
-            <span className="composer-help" title="自动回答澄清问题并批准计划审核。"><CircleHelp size={14} /></span>
+            <span className="composer-help" title={t.autoHelp}><CircleHelp size={14} /></span>
           </div>
 
           <div className="composer-actions">
-            {failed && currentId && <button className="composer-secondary" type="button" onClick={() => void retry()}>重试</button>}
+            {failed && currentId && <button className="composer-secondary" type="button" onClick={() => void retry()}>{t.retry}</button>}
             <div className="composer-menu-anchor model-anchor">
               <button type="button" className="model-selector" aria-haspopup="menu" aria-expanded={modelOpen} onClick={() => {
                 setModelOpen((value) => !value); setAddOpen(false); setSkillOpen(false);
@@ -216,7 +230,7 @@ export function InputBar() {
                 </div>
               )}
             </div>
-            <button className="composer-send" type="button" onClick={() => running ? void cancel() : void submit()} disabled={!running && (!text.trim() || uploading)} aria-label={running ? '停止' : 'Send'}>
+            <button className="composer-send" type="button" onClick={() => running ? void cancel() : void submit()} disabled={!running && (!text.trim() || uploading)} aria-label={running ? t.stop : t.send}>
               {running ? <Square size={15} fill="currentColor" /> : <Send size={17} />}
             </button>
           </div>
@@ -224,7 +238,7 @@ export function InputBar() {
 
         {skillOpen && (
           <div className="composer-popover skill-popover">
-            <div className="skill-search"><AtSign size={15} /><input autoFocus value={skillQuery} onChange={(event) => setSkillQuery(event.target.value)} placeholder="Search skills and tools" /></div>
+            <div className="skill-search"><AtSign size={15} /><input autoFocus value={skillQuery} onChange={(event) => setSkillQuery(event.target.value)} placeholder={t.searchSkills} /></div>
             <div className="skill-list">
               {filteredSkills.map((skill) => (
                 <button type="button" key={skill.id} className={selectedSkills.includes(skill.id) ? 'selected' : ''} onClick={() => toggleSkill(skill.id)}>

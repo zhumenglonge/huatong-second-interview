@@ -1,10 +1,6 @@
-# right-panel-layout Specification
+# Spec Delta
 
-## Purpose
-
-为会话工作区提供统一的右侧任务面板布局控制，让用户可以按需打开待办、结果、计算和笔记模块，并在不使用时释放中间会话空间。
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: 布局配置控制右侧模块
 

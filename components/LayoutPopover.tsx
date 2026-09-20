@@ -2,16 +2,10 @@
 
 import React, { useEffect, useRef } from 'react';
 import { Cpu, FileText, ListTodo, NotebookPen, SlidersHorizontal } from 'lucide-react';
+import { useLocale } from '@/lib/i18n';
 
 export type LayoutSectionId = 'todo' | 'results' | 'compute' | 'notes';
 export type LayoutVisibility = Record<LayoutSectionId, boolean>;
-
-const ITEMS: Array<{ id: LayoutSectionId; label: string; Icon: typeof ListTodo }> = [
-  { id: 'todo', label: '待办', Icon: ListTodo },
-  { id: 'results', label: '结果', Icon: FileText },
-  { id: 'compute', label: '计算', Icon: Cpu },
-  { id: 'notes', label: '笔记', Icon: NotebookPen },
-];
 
 export function LayoutPopover({
   open,
@@ -24,6 +18,11 @@ export function LayoutPopover({
   onOpenChange: (open: boolean) => void;
   onVisibilityChange: (id: LayoutSectionId, value: boolean) => void;
 }) {
+  const { t } = useLocale();
+  const ITEMS: Array<{ id: LayoutSectionId; label: string; Icon: typeof ListTodo }> = [
+    { id: 'todo', label: t.todo, Icon: ListTodo }, { id: 'results', label: t.results, Icon: FileText },
+    { id: 'compute', label: t.compute, Icon: Cpu }, { id: 'notes', label: t.notes, Icon: NotebookPen },
+  ];
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -40,17 +39,17 @@ export function LayoutPopover({
       <button
         className="layout-trigger"
         type="button"
-        aria-label="布局"
+        aria-label={t.layout}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => onOpenChange(!open)}
       >
         <SlidersHorizontal size={16} />
-        <span>布局</span>
+        <span>{t.layout}</span>
       </button>
       {open && (
-        <div className="layout-popover" role="dialog" aria-label="布局配置">
-          <h3>布局配置</h3>
+        <div className="layout-popover" role="dialog" aria-label={t.layoutConfig}>
+          <h3>{t.layoutConfig}</h3>
           <div className="layout-options">
             {ITEMS.map(({ id, label, Icon }) => (
               <label className="layout-option" key={id}>

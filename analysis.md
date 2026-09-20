@@ -2,7 +2,8 @@
 
 > 目标产品：Biomni / Biomni Lab（https://biomni.phylo.bio/）
 > 本文回答：目标用户与核心任务、页面/功能/用户路径、任务状态机、核心交互与可简化项、功能取舍、技术推断与不确定点、降级方案，并给出改进版原型范围（**采用方案一：工作流/任务画布**）。
-> 说明：本文基于官网公开资料、Science/Phylo 公开报道与产品界面截图所做的产品分析；对无法登录验证的部分已标注推断与降级策略。
+> 分析范围：本文重点分析登录后的 Biomni Lab 工作台。官网营销首页、登录鉴权流程，以及部分需要账号权限或真实后端资源的页面无法完整验证，因此不将它们写成已确认的现状结论。
+> 证据规则：文中“观察到”表示来自页面、DOM 或公开资料的直接证据；“推断”表示基于界面行为、命名和产品资料做出的合理判断；无法验证的内容单独列入“不确定点”。
 
 ---
 
@@ -16,7 +17,7 @@ Biomni 是一个**通用生物医学 AI Agent / 集成生物学环境（IBE）**
 
 | 维度 | 结论 |
 |---|---|
-| 目标用户 | 生物医学研究者、生物信息分析师、药企/生物技术公司研发人员（湿实验 + 干实验混合角色）；次要：需要快速做文献/数据综述的 PI 与学生 |
+| 目标用户 | 生物医学研究者、生物信息分析师、药企/生物技术公司研发人员；次要：需要快速做文献/数据综述的 PI 与学生 |
 | 核心任务 | 用一句话下达一个**多步骤科研任务**（如"设计某蛋白理性设计实验并产出报告""分析单细胞/转录组数据""靶点评估"），由 Agent 端到端执行并交付**可下载的结果文件 + 可追溯的执行过程** |
 | 用户价值 | 把"数周的人工分析流程"压缩到"分钟级"；把"频繁切换工具/数据集"收敛为"一个工作空间"；保证**严谨、可控、可追踪**（科学家要能审计 Agent 每一步） |
 | 关键诉求 | ① 过程透明可审计（traces/待办/结果）② 可控（澄清、计划审批、取消）③ 后台长时运行（关页面不丢）④ 结果可复用（文件树/下载） |
@@ -25,7 +26,9 @@ Biomni 是一个**通用生物医学 AI Agent / 集成生物学环境（IBE）**
 
 ## 2. 产品全景：页面、功能与用户路径
 
-### 2.1 信息架构 / 页面与面板清单（✅ 已通过 DOM 实测验证，2026-09-19）
+### 2.1 Biomni 当前工作台的信息架构 / 页面与面板
+
+以下内容描述的是当前可观察到的登录后工作台，不包含本项目新增的改进功能。
 
 - **图标栏（60px，最左侧独立列）**
   - `w-[60px] h-screen bg-sidebar border-r flex flex-col items-center py-3`
@@ -142,7 +145,9 @@ stateDiagram-v2
 
 ---
 
-## 4. 功能清单与取舍（保留/改进/删除/新增 + 优先级）
+## 4. 基于现状的改进版功能取舍
+
+本节开始从“分析 Biomni”切换到“本项目准备如何改进”。“有”表示 Biomni 当前已有该能力；“无”表示当前观察中未发现，或不属于 Biomni 的现有交互。
 
 优先级定义：**P0 = 核心闭环必须**；**P1 = 创新/差异化（本次重点）**；**P2 = 延后/降级**。
 
@@ -180,16 +185,16 @@ stateDiagram-v2
 
 ---
 
-## 6. 技术实现（✅ 已通过 DOM 实测确认，2026-09-19）
+## 6. 技术实现观察、推断与不确定点
 
-### 6.1 已确认事实
+### 6.1 DOM 观察结果与高概率推断
 
-- **前端框架**：**Next.js App Router**（证据：`<html class="__variable_e9ca84 __variable_eda64e">`（Next Font 变量类）、`<meta name="next-size-adjust">`、无 `__NEXT_DATA__`）
-- **样式方案**：**Tailwind CSS + Tailwind Typography**（证据：满屏 utility class、`prose prose-base max-w-full` 正文容器）
-- **组件库**：**shadcn/ui（Radix 底层）**（证据：23 处 `data-state`、`aria-haspopup="menu"`、`ring-offset-background`、`bg-muted/50`、Switch 惯用写法 `peer inline-flex rounded-full border-2`）
-- **图标**：**lucide-react**（证据：64 个 svg 中 63 个带 `lucide lucide-*` 类）
-- **监控**：**Sentry production**（证据：`<meta name="sentry-trace">`、`sentry-environment=production`、`sentry-release=35d2397f...`）
-- **流式推送**：**SSE**（证据：`data-testid="streaming-text-root"` 打字机渲染容器）
+- **前端框架：高概率为 Next.js App Router**（证据：Next Font 变量类、`<meta name="next-size-adjust">`，且未发现旧式 `__NEXT_DATA__`；仅凭 DOM 不能绝对证明构建方式）
+- **样式方案：高概率为 Tailwind CSS，并使用 Typography 类**（证据：大量 utility class、`prose prose-base max-w-full`；无法仅凭页面排除其他编译方案）
+- **组件库：疑似 shadcn/ui + Radix**（证据：`data-state`、`aria-haspopup="menu"`、`ring-offset-background`、Switch 常见 class 组合）
+- **图标：疑似 lucide-react**（证据：多数 SVG 带 `lucide lucide-*` 类）
+- **监控：页面接入了 Sentry production**（证据：`sentry-trace`、`sentry-environment=production`、`sentry-release` 元数据）
+- **流式更新：界面表现为打字机/增量渲染；底层传输协议未完全确认**（`data-testid="streaming-text-root"` 只能证明渲染容器，不能单独证明一定使用 SSE）
 - **布局**：四区 flex shell（60px 图标栏 + 320px 侧栏 + 聊天 + 8px 拖拽 + 368px 右栏），页面级不滚（app-shell），所有滚动在内部容器
 - **侧栏/右栏均可拖拽调宽**（`cursor-col-resize`）
 - **i18n**：有字典（`<html lang="zh">`，但 "Quick Tasks"/"Show traces"/"Transfer"/"Submit" 保留英文）
@@ -212,6 +217,15 @@ stateDiagram-v2
 - 后端语言与编排引擎。
 - `布局` dropdown 菜单的具体选项（未展开验证）。
 
+### 6.3 可选的边界状态
+
+除主流程中的输入、澄清、规划、审批、执行、成功、失败和取消外，真实产品还可能出现以下状态。本项目原型按时间优先级只实现前者，后者通过统一的状态提示降级：
+
+- `queued`：任务已提交但尚未获得计算资源；
+- `partial_success`：部分步骤成功，部分步骤失败，允许从失败步骤重试；
+- `recovering`：刷新或断线后正在恢复任务快照与事件订阅；
+- `download_failed`：结果已生成但文件下载失败，可重新拉取或复制结果链接。
+
 ---
 
 ## 7. 降级方案（登录/后端/外部服务不可复现时）
@@ -226,6 +240,8 @@ stateDiagram-v2
 | 分享/协作/笔记 | 需多用户 | 删除 | 预留路由与权限位 |
 
 > Mock 范围与真实接口替换点将在 README 中明确标注（作业要求）。
+
+最小可用降级路径是：用户输入任务 → 本地状态机模拟执行 → 展示步骤进度 → 产出本地结果文件 → 支持失败重试、取消和刷新恢复。这样即使没有登录、真实 Agent、云沙箱或对象存储，也不会破坏核心任务闭环。
 
 ---
 
