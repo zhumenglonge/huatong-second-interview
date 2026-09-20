@@ -54,7 +54,7 @@ export function LayoutPopover({
           <div className="layout-options">
             {ITEMS.map(({ id, label, Icon }) => (
               <label className="layout-option" key={id}>
-                <span className="layout-option-label"><Icon size={22} /><span>{label}</span></span>
+                <span className="layout-option-label"><Icon size={18} /><span>{label}</span></span>
                 <input
                   type="checkbox"
                   role="switch"

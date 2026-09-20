@@ -69,19 +69,19 @@ body {
 }
 .layout-trigger:hover, .layout-trigger[aria-expanded="true"] { background: var(--task-hover-bg); }
 .layout-popover {
-  position: absolute; right: 0; top: calc(100% + 8px); z-index: 50; width: 300px;
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 50; width: 232px;
   border: 1px solid #25241f; border-radius: 12px; background: var(--panel);
   box-shadow: 0 12px 30px rgb(34 32 24 / 16%); overflow: hidden;
 }
-.layout-popover h3 { margin: 0; padding: 18px 20px 14px; border-bottom: 1px solid var(--line); font-size: 20px; }
-.layout-options { padding: 8px 12px 12px; }
-.layout-option { min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 8px; color: var(--ink); cursor: pointer; }
-.layout-option-label { display: inline-flex; align-items: center; gap: 14px; font-size: 17px; }
+.layout-popover h3 { margin: 0; padding: 13px 16px 10px; border-bottom: 1px solid var(--line); font-size: 15px; }
+.layout-options { padding: 6px 8px 8px; }
+.layout-option { min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 6px; color: var(--ink); cursor: pointer; }
+.layout-option-label { display: inline-flex; align-items: center; gap: 10px; font-size: 14px; }
 .layout-option input { position: absolute; opacity: 0; pointer-events: none; }
-.layout-switch { width: 54px; height: 32px; padding: 4px; border-radius: 999px; background: #e4e2dc; transition: background .18s; }
-.layout-switch span { display: block; width: 24px; height: 24px; border-radius: 50%; background: #fffdf8; box-shadow: 0 1px 2px rgb(0 0 0 / 12%); transition: transform .18s; }
+.layout-switch { width: 40px; height: 22px; padding: 3px; border-radius: 999px; background: #e4e2dc; transition: background .18s; }
+.layout-switch span { display: block; width: 16px; height: 16px; border-radius: 50%; background: #fffdf8; box-shadow: 0 1px 2px rgb(0 0 0 / 12%); transition: transform .18s; }
 .layout-option input:checked + .layout-switch { background: var(--accent); }
-.layout-option input:checked + .layout-switch span { transform: translateX(22px); }
+.layout-option input:checked + .layout-switch span { transform: translateX(18px); }
 .layout-option input:focus-visible + .layout-switch { outline: 2px solid var(--ink); outline-offset: 2px; }
 @media (max-width: 900px) {
   .col-head .muted {
