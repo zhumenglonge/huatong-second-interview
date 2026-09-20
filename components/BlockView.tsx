@@ -82,24 +82,28 @@ function CopyButton({ text }: { text: string }) {
 
 function ClarificationCard({ block }: { block: Block }) {
   const currentId = useTaskStore((state) => state.currentId);
+  const activeProjectId = useTaskStore((state) => state.activeProjectId);
   const selectTask = useTaskStore((state) => state.selectTask);
   const question = String(block.meta?.question ?? block.text ?? '请补充以下信息');
   const options = Array.isArray(block.meta?.options) ? block.meta.options.map(String) : [];
+  const answered = block.meta?.answered === true;
+  const answer = String(block.meta?.answer ?? '');
   const [selected, setSelected] = useState('');
   const [custom, setCustom] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const answer = custom.trim() || selected;
+  const answerValue = custom.trim() || selected;
 
   async function submit() {
-    if (!currentId || !answer || submitting) return;
+    if (!currentId || !answerValue || submitting || answered) return;
     setSubmitting(true);
     setError('');
     try {
-      const response = await fetch(`/api/tasks/${currentId}/messages`, {
+      const query = activeProjectId ? `?projectId=${encodeURIComponent(activeProjectId)}` : '';
+      const response = await fetch(`/api/tasks/${currentId}/messages${query}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input: answer }),
+        body: JSON.stringify({ input: answerValue }),
       });
       if (!response.ok) throw new Error('提交失败，请重试');
       await selectTask(currentId);
@@ -108,6 +112,15 @@ function ClarificationCard({ block }: { block: Block }) {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (answered) {
+    return (
+      <section className="clarification-card answered">
+        <header><span className="clarification-mark answered-mark"><Check size={13} /></span><div><strong>已确认</strong><p>{question}</p></div></header>
+        {answer && <div className="clarification-answer"><span>你的回答</span><p>{answer}</p></div>}
+      </section>
+    );
   }
 
   return (
@@ -120,7 +133,7 @@ function ClarificationCard({ block }: { block: Block }) {
       ))}</div>}
       <label className="clarification-custom"><span>其他</span><input value={custom} onChange={(event) => { setCustom(event.target.value); if (event.target.value) setSelected(''); }} onKeyDown={(event) => { if (event.key === 'Enter') void submit(); }} placeholder="输入自定义回答…" /></label>
       {error && <p className="clarification-error">{error}</p>}
-      <footer><button type="button" className="clarification-submit" disabled={!currentId || !answer || submitting} onClick={() => void submit()}>{submitting ? <LoaderCircle className="spin" size={14} /> : <Send size={14} />}{submitting ? '提交中…' : '提交回答'}</button></footer>
+      <footer><button type="button" className="clarification-submit" disabled={!currentId || !answerValue || submitting} onClick={() => void submit()}>{submitting ? <LoaderCircle className="spin" size={14} /> : <Send size={14} />}{submitting ? '提交中…' : '提交回答'}</button></footer>
     </section>
   );
 }

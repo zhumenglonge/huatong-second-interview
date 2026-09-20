@@ -89,6 +89,10 @@ export function startTask(
   if (registry().has(taskId)) return;
 
   const cwd = sandboxFor(taskId);
+  const startedAt = Date.now();
+  // Absolute directories this run's tool calls referenced (outside cwd). Used
+  // as a fallback so artifacts the agent scattered elsewhere still surface.
+  const extraRoots = new Set<string>();
   const abort = new AbortController();
   const entry: RunningTask = { abort };
   registry().set(taskId, entry);
@@ -99,6 +103,7 @@ export function startTask(
   const emitWithTables = (type: string, payload: Record<string, any>): number => {
       if (type === 'block.add' && payload.block?.kind === 'step') {
         const b = payload.block;
+        collectArtifactDirs(b.meta?.input, cwd, extraRoots);
         addStep({
           id: b.id,
           taskId,
@@ -116,6 +121,11 @@ export function startTask(
         updateStep(stepId, { detail: payload.patch?.meta?.output ?? null });
       } else if (type === 'artifact.add') {
         const a = payload.artifact;
+        // Stamp the owning task so the streamed/persisted artifact block can
+        // build a valid /api/tasks/<taskId>/artifacts/<id> preview URL. The SDK
+        // artifact payload and the sandbox scan omit this; without it the block
+        // renders a dead `/api/tasks/undefined/...` link.
+        a.taskId = a.taskId ?? taskId;
         addArtifact({
           id: a.id,
           taskId,
@@ -145,7 +155,7 @@ export function startTask(
 
       // Fallback artifact discovery: anything the agent wrote into the sandbox
       // that the SDK did not report as an artifact still shows in Results.
-      scanSandboxArtifacts(taskId, cwd, emitWithTables);
+      scanSandboxArtifacts(taskId, cwd, extraRoots, startedAt, emitWithTables);
 
       if (abort.signal.aborted) {
         setTaskStatus(taskId, 'cancelled');
@@ -207,10 +217,30 @@ export function retryTask(taskId: string, input: string) {
 function scanSandboxArtifacts(
   taskId: string,
   cwd: string,
+  extraRoots: Set<string>,
+  startedAt: number,
   emitFn: (type: string, payload: Record<string, any>) => number,
 ) {
   const known = new Set(listArtifacts(taskId).map((a) => a.path));
-  const walk = (dir: string) => {
+  const emitted = new Set<string>();
+
+  const emitArtifact = (full: string, root: string, size: number) => {
+    if (known.has(full) || emitted.has(full)) return;
+    emitted.add(full);
+    const rel = path.relative(root, full);
+    const name = rel && !rel.startsWith('..') ? rel : path.basename(full);
+    emitFn('artifact.add', {
+      artifact: {
+        id: `art-${randomUUID()}`,
+        name,
+        kind: path.extname(full).slice(1) || 'file',
+        size,
+        path: full,
+      },
+    });
+  };
+
+  const walk = (dir: string, root: string, requireRecent: boolean) => {
     let entries: fs.Dirent[] = [];
     try {
       entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -219,26 +249,79 @@ function scanSandboxArtifacts(
     }
     for (const ent of entries) {
       const full = path.join(dir, ent.name);
-      if (ent.isDirectory()) walk(full);
-      else if (!known.has(full)) {
-        known.add(full);
-        let size = 0;
-        try {
-          size = fs.statSync(full).size;
-        } catch {
-          // ignore
-        }
-        emitFn('artifact.add', {
-          artifact: {
-            id: `art-${randomUUID()}`,
-            name: path.relative(cwd, full),
-            kind: path.extname(full).slice(1) || 'file',
-            size,
-            path: full,
-          },
-        });
+      if (ent.isDirectory()) {
+        walk(full, root, requireRecent);
+        continue;
       }
+      let size = 0;
+      let mtimeMs = 0;
+      try {
+        const st = fs.statSync(full);
+        size = st.size;
+        mtimeMs = st.mtimeMs;
+      } catch {
+        continue;
+      }
+      // Shared out-of-sandbox dirs (e.g. a reused /tmp/sandbox) are only trusted
+      // for files this run actually touched, so another task's leftovers never leak.
+      if (requireRecent && mtimeMs < startedAt - 2000) continue;
+      emitArtifact(full, root, size);
     }
   };
-  walk(cwd);
+
+  // Primary: the task's own sandbox (always surfaced, no time gate).
+  walk(cwd, cwd, false);
+
+  // Fallback: absolute directories this run's commands/files referenced but that
+  // sit outside the sandbox. Ancestors of cwd are skipped to avoid sibling-task
+  // leakage; everything else is time-gated to this run.
+  for (const raw of extraRoots) {
+    const root = path.normalize(raw);
+    if (root === cwd || root.startsWith(cwd + path.sep) || cwd.startsWith(root + path.sep)) continue;
+    let st: fs.Stats;
+    try {
+      st = fs.statSync(root);
+    } catch {
+      continue;
+    }
+    if (st.isDirectory()) walk(root, root, true);
+    else emitArtifact(root, path.dirname(root), st.size);
+  }
+}
+
+// Absolute-path tokens inside a shell command (best-effort; ASCII paths).
+const ABS_PATH_TOKEN = /(?:^|[\s'"=;()<>|,])((?:\/[A-Za-z0-9._@+~-]+)+)/g;
+
+/**
+ * Remember out-of-sandbox directories a tool call pointed at, so the final
+ * artifact scan can look there even if the model ignored the cwd instruction.
+ * In-sandbox paths are skipped (already covered by the primary scan).
+ */
+function collectArtifactDirs(input: unknown, cwd: string, out: Set<string>): void {
+  if (!input || typeof input !== 'object') return;
+  const obj = input as Record<string, unknown>;
+
+  const pushDir = (p: string) => {
+    const norm = path.normalize(p);
+    if (!path.isAbsolute(norm)) return;
+    if (norm === cwd || norm.startsWith(cwd + path.sep)) return;
+    out.add(norm);
+  };
+
+  for (const key of ['file_path', 'path', 'notebook_path']) {
+    const v = obj[key];
+    if (typeof v === 'string' && v.trim() && path.isAbsolute(v)) pushDir(path.dirname(v));
+  }
+
+  const cmd = obj.command;
+  if (typeof cmd === 'string' && cmd) {
+    ABS_PATH_TOKEN.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = ABS_PATH_TOKEN.exec(cmd))) {
+      const norm = path.normalize(m[1]);
+      const base = norm.split('/').pop() ?? '';
+      const looksLikeFile = /\.[A-Za-z0-9]+$/.test(base);
+      pushDir(looksLikeFile ? path.dirname(norm) : norm);
+    }
+  }
 }

@@ -9,7 +9,6 @@ import {
   FileText,
   Flashlight,
   Network,
-  NotebookPen,
   RefreshCw,
   X,
   Download,
@@ -68,6 +67,76 @@ function EmptyState({ icon, title, description }: { icon: ReactNode; title: stri
   );
 }
 
+const NOTES_SAVE_DEBOUNCE_MS = 600;
+
+/**
+ * Per-task note editor. Persists through the store (PATCH /api/tasks/:id/notes)
+ * with a short debounce so typing doesn't spam the backend. Resets to the newly
+ * selected task's saved note whenever the active task changes.
+ */
+function NotesEditor({
+  currentId,
+  notes,
+  saveNotes,
+  t,
+}: {
+  currentId: string | null;
+  notes: string;
+  saveNotes: (content: string) => Promise<void>;
+  t: ReturnType<typeof useLocale>['t'];
+}) {
+  const [draft, setDraft] = useState(notes);
+  const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Adopt the server note when switching tasks (or after a snapshot reload that
+  // isn't the result of our own optimistic write).
+  useEffect(() => {
+    setDraft(notes);
+    setStatus('idle');
+  }, [currentId]);
+
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+
+  const onChange = (value: string) => {
+    setDraft(value);
+    if (!currentId) return;
+    setStatus('saving');
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      void saveNotes(value).then(() => setStatus('saved'));
+    }, NOTES_SAVE_DEBOUNCE_MS);
+  };
+
+  if (!currentId) {
+    return (
+      <textarea
+        className="notes-editor"
+        placeholder={t.notesNeedTask}
+        value=""
+        disabled
+        readOnly
+        aria-label={t.notes}
+      />
+    );
+  }
+
+  return (
+    <div className="notes-editor-wrap">
+      <textarea
+        className="notes-editor"
+        placeholder={t.notesPlaceholder}
+        value={draft}
+        onChange={(event) => onChange(event.target.value)}
+        aria-label={t.notes}
+      />
+      <span className={`notes-editor-status ${status === 'saving' ? 'saving' : ''}`}>
+        {status === 'saving' ? t.notesSaving : status === 'saved' ? t.notesSaved : ''}
+      </span>
+    </div>
+  );
+}
+
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -85,6 +154,8 @@ export function RightPanel({
   const artifacts = useTaskStore((state) => state.artifacts);
   const taskError = useTaskStore((state) => state.taskError);
   const currentId = useTaskStore((state) => state.currentId);
+  const notes = useTaskStore((state) => state.notes);
+  const saveNotes = useTaskStore((state) => state.saveNotes);
   const selectTask = useTaskStore((state) => state.selectTask);
   const { t } = useLocale();
 
@@ -217,7 +288,7 @@ export function RightPanel({
 
         {visible.notes && (
           <PanelSection id="notes" title={t.notes} open={open.notes} onToggle={() => toggle('notes')} onClose={() => close('notes')} closeLabel={t.close}>
-            <EmptyState icon={<NotebookPen size={46} />} title={t.notesEmptyTitle} description={t.notesEmptyDesc} />
+            <NotesEditor currentId={currentId} notes={notes} saveNotes={saveNotes} t={t} />
           </PanelSection>
         )}
       </div>

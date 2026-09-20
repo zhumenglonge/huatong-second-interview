@@ -1,11 +1,13 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useRef, useCallback } from 'react';
 import { Cpu, FileText, ListTodo, NotebookPen, SlidersHorizontal } from 'lucide-react';
 import { useLocale } from '@/lib/i18n';
 
 export type LayoutSectionId = 'todo' | 'results' | 'compute' | 'notes';
 export type LayoutVisibility = Record<LayoutSectionId, boolean>;
+
+const CLOSE_DELAY = 200;
 
 export function LayoutPopover({
   open,
@@ -23,29 +25,33 @@ export function LayoutPopover({
     { id: 'todo', label: t.todo, Icon: ListTodo }, { id: 'results', label: t.results, Icon: FileText },
     { id: 'compute', label: t.compute, Icon: Cpu }, { id: 'notes', label: t.notes, Icon: NotebookPen },
   ];
-  const rootRef = useRef<HTMLDivElement>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) onOpenChange(false);
-    };
-    document.addEventListener('pointerdown', onPointerDown);
-    return () => document.removeEventListener('pointerdown', onPointerDown);
-  }, [open, onOpenChange]);
+  const handleEnter = useCallback(() => {
+    if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; }
+    onOpenChange(true);
+  }, [onOpenChange]);
+
+  const handleLeave = useCallback(() => {
+    closeTimer.current = setTimeout(() => onOpenChange(false), CLOSE_DELAY);
+  }, [onOpenChange]);
 
   return (
-    <div className="layout-control" ref={rootRef}>
+    <div
+      className="layout-control"
+      onMouseEnter={handleEnter}
+      onMouseLeave={handleLeave}
+    >
       <button
         className="layout-trigger"
         type="button"
         aria-label={t.layout}
+        title={t.layout}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => onOpenChange(!open)}
       >
         <SlidersHorizontal size={16} />
-        <span>{t.layout}</span>
       </button>
       {open && (
         <div className="layout-popover" role="dialog" aria-label={t.layoutConfig}>

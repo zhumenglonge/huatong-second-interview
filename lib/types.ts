@@ -47,6 +47,8 @@ export interface TaskRow {
   input: string;
   status: TaskStatus;
   error: string | null;
+  /** User-authored note text for this task (right-panel Notes editor). */
+  notes: string;
   createdAt: number;
   updatedAt: number;
   lastSeq: number;

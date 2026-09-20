@@ -67,6 +67,18 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   const seq = appendEvent(id, 'block.add', { block });
   publish(id, { seq, type: 'block.add', block } as any);
 
+  // When this message answers a pending clarification, mark the original card
+  // as answered (mirrors how approve patches the plan block). This collapses
+  // the card so it can no longer be submitted twice.
+  const pendingClarification = [...priorBlocks]
+    .reverse()
+    .find((b) => b.kind === 'clarification' && b.meta?.answered !== true);
+  if (pendingClarification) {
+    const patch = { meta: { ...pendingClarification.meta, answered: true, answer: input } };
+    const patchSeq = appendEvent(id, 'block.patch', { id: pendingClarification.id, patch });
+    publish(id, { seq: patchSeq, type: 'block.patch', id: pendingClarification.id, patch } as any);
+  }
+
   startTask(
     id,
     conversationContext(priorBlocks, promptWithAttachments(input, attachmentNames)),

@@ -11,6 +11,7 @@ interface TaskState {
   artifacts: ArtifactRow[];
   status: TaskStatus | null;
   taskError: string | null;
+  notes: string;
   lastSeq: number;
   connected: boolean;
 
@@ -22,6 +23,7 @@ interface TaskState {
   send: (input: string, options?: AgentRunOptions, attachments?: UploadRef[]) => Promise<boolean>;
   cancel: () => Promise<void>;
   retry: () => Promise<void>;
+  saveNotes: (content: string) => Promise<void>;
 }
 
 let es: EventSource | null = null;
@@ -43,6 +45,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   artifacts: [],
   status: null,
   taskError: null,
+  notes: '',
   lastSeq: 0,
   connected: false,
 
@@ -67,6 +70,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         artifacts: [],
         status: null,
         taskError: null,
+        notes: '',
         lastSeq: 0,
         connected: false,
       });
@@ -88,6 +92,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       artifacts: [],
       status: null,
       taskError: null,
+      notes: '',
       lastSeq: 0,
       connected: false,
     });
@@ -101,7 +106,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     // Never fall back to the unscoped task endpoint: an unavailable project
     // must not expose another project's tasks.
     if (!projectId) {
-      set({ tasks: [], currentId: null, blocks: [], artifacts: [], status: null, taskError: null });
+      set({ tasks: [], currentId: null, blocks: [], artifacts: [], status: null, taskError: null, notes: '' });
       return;
     }
     const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : '';
@@ -121,6 +126,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       artifacts: [],
       status: null,
       taskError: null,
+      notes: '',
       lastSeq: 0,
       connected: false,
     });
@@ -130,7 +136,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     const task = get().tasks.find((item) => item.id === id);
     if (!task || (task.projectId && task.projectId !== get().activeProjectId)) return;
     closeEs();
-    set({ currentId: id, blocks: [], artifacts: [], status: null, taskError: null, lastSeq: 0 });
+    set({ currentId: id, blocks: [], artifacts: [], status: null, taskError: null, notes: '', lastSeq: 0 });
     await reloadSnapshot(id, get().activeProjectId);
     if (get().currentId === id) openStream(id, get().activeProjectId);
   },
@@ -170,6 +176,19 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     if (!id) return;
     await fetch(`/api/tasks/${id}/retry?projectId=${encodeURIComponent(get().activeProjectId ?? '')}`, { method: 'POST' });
   },
+
+  saveNotes: async (content) => {
+    const id = get().currentId;
+    if (!id) return;
+    // Optimistic: the editor already shows `content`; the request just persists it.
+    set({ notes: content });
+    const projectId = get().activeProjectId ?? '';
+    await fetch(`/api/tasks/${id}/notes?projectId=${encodeURIComponent(projectId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes: content }),
+    });
+  },
 }));
 
 // ---------------------------------------------------------------------------
@@ -191,6 +210,7 @@ async function reloadSnapshot(id: string, projectId: string | null) {
     artifacts: snap.artifacts,
     status: snap.task.status,
     taskError: snap.task.error,
+    notes: snap.task.notes ?? '',
     lastSeq: snap.lastSeq,
   });
 }

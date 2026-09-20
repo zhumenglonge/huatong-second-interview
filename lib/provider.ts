@@ -26,18 +26,31 @@ export interface AgentHandle {
   interrupt(): Promise<void>;
 }
 
-const SYSTEM_PROMPT = `You are a general-purpose biomedical research agent inside an integrated
-biology environment. The user gives you a research task in natural language.
-Rules:
-- Work ONLY inside the current working directory (your sandbox). Never touch files outside it.
+/**
+ * Build the system prompt for a run. `cwd` is the task's assigned sandbox
+ * directory; it is injected verbatim so the model treats that exact path as
+ * its only workspace and stops scattering deliverables to absolute paths like
+ * /tmp/sandbox (which the Results scanner would then miss).
+ */
+function systemPrompt(cwd: string): string {
+  return `You are a general-purpose research & data-analysis agent running inside an isolated sandbox.
+The user gives you a task in natural language.
+Working-directory rules (STRICT):
+- Your assigned working directory is exactly: ${cwd}
+- Treat that directory as your ONLY workspace. Every file you create (datasets, scripts, figures, reports) MUST be written inside it.
+- ALWAYS use relative paths (e.g. ./orders.csv, ./report.md) so files land in the working directory.
+- NEVER write outputs to any absolute path outside the working directory — do not use /tmp, ~ , or other directories. If you need a scratch dir, create one inside the working directory.
+- When you run shell commands, operate from within the working directory first (e.g. \`cd ${cwd} && ...\`) and keep all generated artifacts there.
+- Do not read or modify files outside the working directory.
+Execution rules:
 - Decompose the task into concrete steps and execute them with your tools (read/write files, run commands, search).
-- Write every deliverable (datasets, csv/tsv, figures, and a final markdown report) into the working directory.
 - Keep each visible message concise: state what you are doing, then do it.
-- End with a short summary of findings plus a list of the files you produced.`;
+- End with a short summary of findings plus a list of the files you produced (as paths relative to the working directory).`;
+}
 
 export type AgentMode = 'plan' | 'execute';
 
-function systemPromptFor(options: AgentRunOptions, mode: AgentMode): string {
+function systemPromptFor(options: AgentRunOptions, mode: AgentMode, cwd: string): string {
   const selected = loadEnabledSkills(options.skills).map((skill) => `[${skill.id}] ${skill.instructions}`);
   const skillSection = selected.length
     ? `\nSelected specialist skills for this turn:\n${selected.map((item) => `- ${item}`).join('\n')}`
@@ -49,7 +62,7 @@ function systemPromptFor(options: AgentRunOptions, mode: AgentMode): string {
     ? `\nYou are in planning mode. Do not edit files or execute the research workflow yet.
 First inspect only what is necessary, ask one concise structured question with AskUserQuestion if critical information is missing, then produce a concrete numbered execution plan and call ExitPlanMode.`
     : '\nThe plan has been approved. Execute the requested workflow now and produce the deliverables.';
-  return `${SYSTEM_PROMPT}${skillSection}${autoSection}${modeSection}`;
+  return `${systemPrompt(cwd)}${skillSection}${autoSection}${modeSection}`;
 }
 
 /**
@@ -107,7 +120,7 @@ export async function runQoderAgent(opts: {
         planMode: mode === 'plan',
         permissionMode: 'bypassPermissions',
         allowDangerouslySkipPermissions: true,
-        systemPrompt: systemPromptFor(options, mode),
+        systemPrompt: systemPromptFor(options, mode, cwd),
         ...(resolveCliPath() ? { pathToQoderCLIExecutable: resolveCliPath() } : {}),
         stderr: (data) => console.error('[qodercn:stderr]', data),
       },
@@ -177,8 +190,7 @@ export async function runQoderAgent(opts: {
             if (block.type === 'tool_use') {
               const toolName = String(block.name ?? '').toLowerCase();
               if (mode === 'plan' && toolName.includes('askuserquestion')) {
-                const question = String(block.input?.question ?? 'Please provide the missing information.');
-                const optionsList = Array.isArray(block.input?.options) ? block.input.options.map(String) : [];
+                const { question, options: optionsList } = parseClarification(block.input);
                 emit('block.add', {
                   block: {
                     id: `clarification-${randomUUID()}`,
@@ -197,14 +209,15 @@ export async function runQoderAgent(opts: {
               const stepId = `step-${block.id}`;
               toolUseToStep.set(block.id, stepId);
               stepOrd += 1;
+              const stepTitle = summarizeToolCall(block.name, block.input);
               emit('block.add', {
-                block: { id: stepId, kind: 'step', name: block.name, status: 'running', meta: { ord: stepOrd, input: block.input } },
+                block: { id: stepId, kind: 'step', name: stepTitle, status: 'running', meta: { ord: stepOrd, input: block.input, tool: block.name } },
               });
               emit('block.add', {
                 block: {
                   id: `trace-${block.id}`,
                   kind: 'trace',
-                  name: block.name,
+                  name: stepTitle,
                   text: safeStringify(block.input),
                 },
               });
@@ -299,6 +312,115 @@ export async function runQoderAgent(opts: {
 }
 
 // ---------------------------------------------------------------------------
+
+/** Last path segment of a posix/windows-ish path or file name. */
+function baseName(p: unknown): string {
+  if (typeof p !== 'string' || !p.trim()) return '';
+  const parts = p.split(/[/\\]+/).filter(Boolean);
+  return parts[parts.length - 1] ?? '';
+}
+
+/** Turn a raw shell command into a short Chinese, human-readable intent. */
+function humanizeBash(command: string): string {
+  // Drop leading `cd <dir> &&` hops and env prefixes like `FOO=bar cmd`.
+  let cmd = command.trim().replace(/^(?:cd\s+\S+\s*(?:&&|;)\s*)+/i, '');
+  cmd = cmd.replace(/^(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)+/, '');
+  const lower = cmd.toLowerCase();
+
+  const fileAfter = (re: RegExp) => { const m = cmd.match(re); return m ? baseName(m[1]) : ''; };
+
+  if (/^(python3?|pypy)\b/.test(lower)) {
+    const py = fileAfter(/([\w./@+-]+\.py)/i);
+    return py ? `运行脚本 ${py}` : '运行 Python 脚本';
+  }
+  if (/^node\s+.*\.js/i.test(lower)) { return `运行脚本 ${fileAfter(/([\w./@-]+\.js)/i) || 'script.js'}`; }
+  if (/^(pip3?|uv|poetry|conda)\b/.test(lower) || /^(npm|pnpm|yarn)\s+install\b/.test(lower)) return '安装依赖';
+  if (/^(npm|pnpm|yarn)\s+run\b/.test(lower)) return '运行构建/脚本任务';
+  if (/^git\b/.test(lower)) { const sub = cmd.split(/\s+/)[1]; return sub ? `执行 Git（${sub}）` : '执行 Git 操作'; }
+  if (/^(curl|wget)\b/.test(lower)) return '访问网络资源';
+  if (/^ls\b/.test(lower)) return '查看目录内容';
+  if (/^cat\b/.test(lower)) { const f = fileAfter(/\bcat\s+([^\s|&;]+)/i); return f ? `查看文件 ${f}` : '查看文件内容'; }
+  if (/^mkdir\b/.test(lower)) return '创建目录';
+  if (/^(cd|pwd|export|source|echo)\b/.test(lower)) return '准备运行环境';
+
+  const firstLine = cmd.split('\n')[0].trim();
+  return `执行命令：${truncate(firstLine, 48)}`;
+}
+
+/**
+ * Build a short Chinese, human-readable step title from a tool call instead of
+ * the raw SDK tool name + absolute path ("Write: /Users/…/.data/sandboxes/xxx"),
+ * which is unreadable to end users. Falls back to a trimmed command line.
+ */
+function summarizeToolCall(name: unknown, input: unknown): string {
+  const tool = String(name || 'tool').toLowerCase();
+  const obj = (input && typeof input === 'object') ? input as Record<string, unknown> : {};
+  const file = baseName(obj.file_path ?? obj.path ?? obj.notebook_path);
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : '');
+
+  if (tool.includes('write')) return file ? `写入文件 ${file}` : '写入文件';
+  if (tool.includes('edit')) return file ? `修改文件 ${file}` : '修改文件';
+  if (tool.includes('read')) return file ? `读取文件 ${file}` : '读取文件';
+  if (tool.includes('glob')) { const p = str(obj.query) || str(obj.pattern); return p ? `查找文件 ${truncate(p, 30)}` : '查找文件'; }
+  if (tool.includes('grep')) { const p = str(obj.pattern) || str(obj.query); return p ? `搜索代码 ${truncate(p, 30)}` : '搜索代码'; }
+  if (tool.includes('websearch')) { const q = str(obj.query); return q ? `联网搜索 ${truncate(q, 30)}` : '联网搜索'; }
+  if (tool.includes('webfetch')) { const host = str(obj.url).replace(/^https?:\/\//, '').split('/')[0]; return host ? `访问网页 ${truncate(host, 30)}` : '访问网页'; }
+  if (tool.includes('bash') || typeof obj.command === 'string') {
+    const cmd = str(obj.command);
+    return cmd ? humanizeBash(cmd) : '执行命令';
+  }
+
+  for (const key of ['query', 'pattern', 'prompt', 'description', 'url', 'name']) {
+    const v = str(obj[key]);
+    if (v) return `${name}: ${truncate(v, 40)}`;
+  }
+  return String(name || '工具调用');
+}
+
+/**
+ * Extract the real question + option labels from an AskUserQuestion tool input.
+ * The SDK passes a { questions: [{ question, header, options: [{ label, description }] }] }
+ * array; the previous code only read a flat { question, options }, so the actual
+ * (often Chinese) question was dropped and the UI fell back to an English
+ * placeholder. Handle both shapes and never surface the English fallback.
+ */
+function parseClarification(input: unknown): { question: string; options: string[] } {
+  const obj = (input && typeof input === 'object') ? input as Record<string, unknown> : {};
+
+  const questions = Array.isArray(obj.questions) ? obj.questions : [];
+  if (questions.length > 0) {
+    const first = (questions[0] && typeof questions[0] === 'object') ? questions[0] as Record<string, unknown> : {};
+    const text =
+      typeof first.question === 'string' && first.question.trim() ? first.question.trim()
+        : typeof first.header === 'string' && first.header.trim() ? first.header.trim() : '';
+    const options = extractClarificationOptions(first.options);
+    if (text) return { question: text, options };
+    if (options.length) return { question: options.join(' / '), options };
+  }
+
+  const flatQuestion = typeof obj.question === 'string' && obj.question.trim() ? obj.question.trim() : '';
+  const flatOptions = extractClarificationOptions(obj.options);
+  if (flatQuestion) return { question: flatQuestion, options: flatOptions };
+  if (flatOptions.length) return { question: flatOptions.join(' / '), options: flatOptions };
+
+  return { question: '我需要你补充一些信息才能继续，请说明你的偏好或提供缺失的内容。', options: [] };
+}
+
+function extractClarificationOptions(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((opt) => {
+      if (typeof opt === 'string') return opt.trim();
+      if (opt && typeof opt === 'object') {
+        const o = opt as Record<string, unknown>;
+        const label = typeof o.label === 'string' ? o.label.trim() : '';
+        const desc = typeof o.description === 'string' ? o.description.trim() : '';
+        return label || desc;
+      }
+      return '';
+    })
+    .filter((s) => s.length > 0);
+}
 
 function safeStringify(v: unknown): string {
   return truncate(stringifyUnknown(v), 2000);

@@ -51,13 +51,13 @@ export default function Page() {
               {t.canvas}
             </button>
           </span>
-          <LayoutPopover
-            open={layoutOpen}
-            visibility={layoutVisibility}
-            onOpenChange={setLayoutOpen}
-            onVisibilityChange={(id: LayoutSectionId, value: boolean) => setLayoutVisibility((state) => ({ ...state, [id]: value }))}
-          />
           <span className="header-actions">
+            <LayoutPopover
+              open={layoutOpen}
+              visibility={layoutVisibility}
+              onOpenChange={setLayoutOpen}
+              onVisibilityChange={(id: LayoutSectionId, value: boolean) => setLayoutVisibility((state) => ({ ...state, [id]: value }))}
+            />
             <button className="header-tool" type="button" onClick={() => setLocale(locale === 'zh' ? 'en' : 'zh')} aria-label={locale === 'zh' ? t.switchToEn : t.switchToZh} title={locale === 'zh' ? t.switchToEn : t.switchToZh}>{locale === 'zh' ? 'EN' : '中'}</button>
             <button className="header-tool" type="button" onClick={toggleTheme} aria-label={theme === 'light' ? t.themeDark : t.themeLight} title={theme === 'light' ? t.themeDark : t.themeLight}>{theme === 'light' ? '☾' : '☀'}</button>
           </span>

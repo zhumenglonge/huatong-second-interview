@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Biomni Lab · improved prototype',
+  title: 'Biomni Lab',
   description: 'AI-agent research workbench with a real Qoder Agent SDK backend',
 };
 

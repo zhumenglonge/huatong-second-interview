@@ -21,6 +21,16 @@ import type { ProjectRow, TaskRow } from '@/lib/types';
 
 type Project = ProjectRow;
 
+/**
+ * Default project is seeded in DB with the Chinese name '快速任务'. Show the
+ * localized string until the user explicitly renames it via project settings.
+ */
+function localizeProjectName(project: Project | undefined, t: { quickTasks: string }): string {
+  if (!project) return t.quickTasks;
+  if (project.isDefault && project.name === '快速任务') return t.quickTasks;
+  return project.name;
+}
+
 function ProjectDialog({
   projects,
   current,
@@ -66,7 +76,7 @@ function ProjectDialog({
             type="button"
           >
             <FolderOpen size={16} />
-            <span>{project.name}</span>
+            <span>{localizeProjectName(project, t)}</span>
           </button>
         ))}
         {!creating ? (
@@ -302,10 +312,10 @@ export function Sidebar({ collapsed, onCollapsedChange, onShowOverview }: { coll
   const visibleTasks = normalizedQuery ? tasks.filter((task) => `${task.title} ${task.input}`.toLowerCase().includes(normalizedQuery)) : tasks;
   const waitingTasks = visibleTasks.filter((task) => task.status === 'waiting');
   const otherTasks = visibleTasks.filter((task) => task.status !== 'waiting');
-  const availableProjects = projects.length ? projects : [{ id: 'quick-tasks', name: t.quickTasks, createdAt: 0, updatedAt: 0, isDefault: true } satisfies ProjectRow];
+  const availableProjects = projects.length ? projects : [{ id: 'quick-tasks', name: '快速任务', createdAt: 0, updatedAt: 0, isDefault: true } satisfies ProjectRow];
   const project = activeProjectId ?? availableProjects[0]?.id ?? 'quick';
   const currentProject = availableProjects.find((item) => item.id === project) ?? availableProjects[0];
-  const projectName = currentProject?.name ?? t.quickTasks;
+  const projectName = localizeProjectName(currentProject, t);
   const currentProjectHasTasks = tasks.length > 0;
 
   const renameProject = (name: string) => {

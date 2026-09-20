@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Blocks, CircleHelp, FolderOpen, User } from 'lucide-react';
+import { useLocale } from '@/lib/i18n';
 
 interface IconRailProps {
   activeItem?: string;
@@ -10,27 +11,28 @@ interface IconRailProps {
   onHubClick?: () => void;
 }
 
-const NAV_ITEMS = [
-  { id: 'project', label: '项目', icon: FolderOpen },
-  { id: 'hub', label: '中心', icon: Blocks },
-] as const;
-
-const BOTTOM_ITEMS = [{ id: 'help', label: '帮助', icon: CircleHelp }] as const;
-
 export function IconRail({ activeItem = 'project', onNewChat, onProjectClick, onHubClick }: IconRailProps) {
+  const { t } = useLocale();
+  const NAV_ITEMS = [
+    { id: 'project', label: t.project, icon: FolderOpen },
+    { id: 'hub', label: t.hub, icon: Blocks },
+  ] as const;
+
+  const BOTTOM_ITEMS = [{ id: 'help', label: t.help, icon: CircleHelp }] as const;
+
   return (
     <div className="icon-rail">
       <button
         className="rail-logo"
-        aria-label="新建空白问答会话"
-        title="新建空白问答会话"
+        aria-label={t.newChat}
+        title={t.newChat}
         type="button"
         onClick={onNewChat}
       >
         B
       </button>
 
-      <nav className="rail-nav" aria-label="主导航">
+      <nav className="rail-nav" aria-label={t.mainNav}>
         {NAV_ITEMS.map((item) => (
           <button
             key={item.id}
@@ -57,7 +59,7 @@ export function IconRail({ activeItem = 'project', onNewChat, onProjectClick, on
             <span>{item.label}</span>
           </button>
         ))}
-        <button className="rail-avatar" title="账号" type="button">
+        <button className="rail-avatar" title={t.account} type="button">
           <User size={16} />
         </button>
       </div>

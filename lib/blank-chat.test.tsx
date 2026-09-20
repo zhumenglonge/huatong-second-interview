@@ -36,6 +36,7 @@ describe('blank chat entry', () => {
       input: 'question',
       status: 'running',
       error: null,
+      notes: '',
       createdAt: 1,
       updatedAt: 1,
       lastSeq: 3,

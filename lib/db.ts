@@ -91,6 +91,9 @@ function getDb(): DatabaseSync {
   if (!taskColumns.some((c) => c.name === 'project_id')) {
     db.exec(`ALTER TABLE tasks ADD COLUMN project_id TEXT`);
   }
+  if (!taskColumns.some((c) => c.name === 'notes')) {
+    db.exec(`ALTER TABLE tasks ADD COLUMN notes TEXT`);
+  }
   const now = Date.now();
   db.prepare(
     `INSERT OR IGNORE INTO projects (id, name, created_at, updated_at, is_default)
@@ -191,6 +194,14 @@ export function updateTaskStatus(id: string, status: TaskRow['status'], error?: 
   getDb()
     .prepare(`UPDATE tasks SET status = ?, error = ?, updated_at = ? WHERE id = ?`)
     .run(status, error ?? null, Date.now(), id);
+}
+
+/** Persist the user-authored note text for a task (right-panel Notes editor). */
+export function updateTaskNotes(id: string, notes: string): TaskRow | undefined {
+  getDb()
+    .prepare(`UPDATE tasks SET notes = ?, updated_at = ? WHERE id = ?`)
+    .run(notes, Date.now(), id);
+  return getTask(id);
 }
 
 export function taskBelongsToProject(taskId: string, projectId: string): boolean {
@@ -321,6 +332,7 @@ function mapTask(r: Record<string, unknown>): TaskRow {
     input: r.input as string,
     status: r.status as TaskRow['status'],
     error: (r.error as string | null) ?? null,
+    notes: (r.notes as string | null) ?? '',
     createdAt: r.created_at as number,
     updatedAt: r.updated_at as number,
     lastSeq: r.last_seq as number,
