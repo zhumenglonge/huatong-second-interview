@@ -27,3 +27,6 @@ next-env.d.ts
 
 # assignment source doc (not part of the deliverable repo)
 *.docx
+
+.ppt-build
+.ppt-output
