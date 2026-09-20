@@ -28,7 +28,9 @@ function inlineMarkdown(source: string): ReactNode[] {
   return nodes;
 }
 
-function MarkdownText({ text }: { text: string }) {
+/** Shared lightweight markdown renderer (headings/lists/code/inline). Exported
+ * for reuse by the right-panel Notes preview so both use identical styling. */
+export function MarkdownText({ text }: { text: string }) {
   const lines = text.replace(/\r\n/g, '\n').split('\n');
   const content: ReactNode[] = [];
   let i = 0;

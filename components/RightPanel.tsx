@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useTaskStore } from '@/lib/store';
 import { useLocale } from '@/lib/i18n';
+import { MarkdownText } from './BlockView';
 
 import type { LayoutSectionId, LayoutVisibility } from './LayoutPopover';
 
@@ -86,26 +87,66 @@ function NotesEditor({
   t: ReturnType<typeof useLocale>['t'];
 }) {
   const [draft, setDraft] = useState(notes);
+  const [mode, setMode] = useState<'edit' | 'preview'>('edit');
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dirty = useRef(false);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
 
-  // Adopt the server note when switching tasks (or after a snapshot reload that
-  // isn't the result of our own optimistic write).
+  const cancelPending = () => {
+    if (timer.current) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+  };
+
+  // Task switched: drop any pending edit for the previous task, return to edit
+  // mode, and adopt the newly selected task's note (may still be '' until the
+  // snapshot loads — handled by the [notes] effect below).
   useEffect(() => {
-    setDraft(notes);
+    cancelPending();
+    dirty.current = false;
     setStatus('idle');
+    setMode('edit');
+    setDraft(notes);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentId]);
 
-  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  // Adopt external note updates (async snapshot load, optimistic save) while the
+  // user isn't mid-edit, so a late-arriving saved note still populates the box.
+  useEffect(() => {
+    if (!dirty.current) setDraft(notes);
+  }, [notes]);
+
+  useEffect(() => () => { cancelPending(); }, []);
+
+  const commit = (value: string) => {
+    dirty.current = false;
+    setStatus('saving');
+    void saveNotes(value).then(() => setStatus('saved'));
+  };
 
   const onChange = (value: string) => {
     setDraft(value);
     if (!currentId) return;
+    dirty.current = true;
     setStatus('saving');
-    if (timer.current) clearTimeout(timer.current);
+    cancelPending();
     timer.current = setTimeout(() => {
-      void saveNotes(value).then(() => setStatus('saved'));
+      timer.current = null;
+      commit(value);
     }, NOTES_SAVE_DEBOUNCE_MS);
+  };
+
+  // Entering preview should reflect and persist the latest text immediately.
+  const switchMode = (next: 'edit' | 'preview') => {
+    if (next === mode) return;
+    if (next === 'preview' && timer.current) {
+      cancelPending();
+      commit(draftRef.current);
+    }
+    setMode(next);
   };
 
   if (!currentId) {
@@ -123,16 +164,42 @@ function NotesEditor({
 
   return (
     <div className="notes-editor-wrap">
-      <textarea
-        className="notes-editor"
-        placeholder={t.notesPlaceholder}
-        value={draft}
-        onChange={(event) => onChange(event.target.value)}
-        aria-label={t.notes}
-      />
-      <span className={`notes-editor-status ${status === 'saving' ? 'saving' : ''}`}>
-        {status === 'saving' ? t.notesSaving : status === 'saved' ? t.notesSaved : ''}
-      </span>
+      <div className="notes-editor-toolbar" role="tablist" aria-label={t.notes}>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === 'edit'}
+          className={`notes-mode-btn ${mode === 'edit' ? 'active' : ''}`}
+          onClick={() => switchMode('edit')}
+        >
+          {t.notesEdit}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === 'preview'}
+          className={`notes-mode-btn ${mode === 'preview' ? 'active' : ''}`}
+          onClick={() => switchMode('preview')}
+        >
+          {t.notesPreview}
+        </button>
+        <span className={`notes-editor-status ${status === 'saving' ? 'saving' : ''}`}>
+          {status === 'saving' ? t.notesSaving : status === 'saved' ? t.notesSaved : ''}
+        </span>
+      </div>
+      {mode === 'edit' ? (
+        <textarea
+          className="notes-editor"
+          placeholder={t.notesPlaceholder}
+          value={draft}
+          onChange={(event) => onChange(event.target.value)}
+          aria-label={t.notes}
+        />
+      ) : draft.trim() ? (
+        <div className="notes-preview"><MarkdownText text={draft} /></div>
+      ) : (
+        <div className="notes-preview notes-preview-empty">{t.notesPreviewEmpty}</div>
+      )}
     </div>
   );
 }

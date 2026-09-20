@@ -1758,6 +1758,28 @@ body.right-panel-resizing {
   flex-direction: column;
   min-height: 100%;
 }
+.notes-editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.notes-mode-btn {
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.notes-mode-btn:hover { background: var(--surface-muted); }
+.notes-mode-btn.active {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--surface);
+}
 .notes-editor {
   flex: 1;
   min-height: 120px;
@@ -1784,9 +1806,21 @@ body.right-panel-resizing {
   color: var(--muted);
   cursor: not-allowed;
 }
+.notes-preview {
+  flex: 1;
+  min-height: 120px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow-y: auto;
+}
+.notes-preview-empty {
+  color: var(--muted);
+  font-size: 12.5px;
+}
 .notes-editor-status {
-  align-self: flex-end;
-  margin-top: 5px;
+  margin-left: auto;
   min-height: 14px;
   color: var(--muted);
   font-size: 11px;
