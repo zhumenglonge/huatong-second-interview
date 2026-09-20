@@ -1,4 +1,4 @@
-import { listEvents } from '@/lib/db';
+import { getTaskForProject, listEvents, DEFAULT_PROJECT_ID } from '@/lib/db';
 import { subscribe } from '@/lib/events';
 import type { ServerEvent } from '@/lib/types';
 
@@ -15,6 +15,8 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const projectId = new URL(req.url).searchParams.get('projectId') || DEFAULT_PROJECT_ID;
+  if (!getTaskForProject(id, projectId)) return new Response(JSON.stringify({ error: 'task not found' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
   const after = Number(new URL(req.url).searchParams.get('after') ?? 0) || 0;
 
   const encoder = new TextEncoder();

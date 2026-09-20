@@ -1,8 +1,10 @@
 import { create } from 'zustand';
 import { applyEventToBlocks } from './reducer';
-import type { AgentRunOptions, ArtifactRow, Block, ServerEvent, TaskRow, TaskStatus, UploadRef } from './types';
+import type { AgentRunOptions, ArtifactRow, Block, ProjectRow, ServerEvent, TaskRow, TaskStatus, UploadRef } from './types';
 
 interface TaskState {
+  projects: ProjectRow[];
+  activeProjectId: string | null;
   tasks: TaskRow[];
   currentId: string | null;
   blocks: Block[];
@@ -12,6 +14,8 @@ interface TaskState {
   lastSeq: number;
   connected: boolean;
 
+  loadProjects: () => Promise<void>;
+  switchProject: (id: string) => Promise<void>;
   refreshTasks: () => Promise<void>;
   newTask: () => void;
   selectTask: (id: string) => Promise<void>;
@@ -21,6 +25,7 @@ interface TaskState {
 }
 
 let es: EventSource | null = null;
+let refreshToken = 0;
 
 function closeEs() {
   if (es) {
@@ -30,6 +35,8 @@ function closeEs() {
 }
 
 export const useTaskStore = create<TaskState>((set, get) => ({
+  projects: [],
+  activeProjectId: null,
   tasks: [],
   currentId: null,
   blocks: [],
@@ -39,10 +46,70 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   lastSeq: 0,
   connected: false,
 
+  loadProjects: async () => {
+    const res = await fetch('/api/projects');
+    if (!res.ok) return;
+    const body = (await res.json()) as { projects?: ProjectRow[] };
+    const projects = Array.isArray(body.projects) ? body.projects : [];
+    const current = get().activeProjectId;
+    const activeProjectId = projects.some((project) => project.id === current)
+      ? current
+      : projects[0]?.id ?? null;
+    if (current && current !== activeProjectId) {
+      ++refreshToken;
+      closeEs();
+      set({
+        projects,
+        activeProjectId,
+        tasks: [],
+        currentId: null,
+        blocks: [],
+        artifacts: [],
+        status: null,
+        taskError: null,
+        lastSeq: 0,
+        connected: false,
+      });
+      return;
+    }
+    set({ projects, activeProjectId });
+  },
+
+  switchProject: async (id) => {
+    const projects = get().projects;
+    if (projects.length && !projects.some((project) => project.id === id)) return;
+    const token = ++refreshToken;
+    closeEs();
+    set({
+      activeProjectId: id,
+      tasks: [],
+      currentId: null,
+      blocks: [],
+      artifacts: [],
+      status: null,
+      taskError: null,
+      lastSeq: 0,
+      connected: false,
+    });
+    await get().refreshTasks();
+    if (token !== refreshToken) return;
+  },
+
   refreshTasks: async () => {
-    const res = await fetch('/api/tasks');
+    if (!get().projects.length) await get().loadProjects();
+    const projectId = get().activeProjectId;
+    // Never fall back to the unscoped task endpoint: an unavailable project
+    // must not expose another project's tasks.
+    if (!projectId) {
+      set({ tasks: [], currentId: null, blocks: [], artifacts: [], status: null, taskError: null });
+      return;
+    }
+    const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : '';
+    const token = refreshToken;
+    const res = await fetch(`/api/tasks${query}`);
     if (!res.ok) return;
     const { tasks } = (await res.json()) as { tasks: TaskRow[] };
+    if (token !== refreshToken || projectId !== get().activeProjectId) return;
     set({ tasks });
   },
 
@@ -60,10 +127,12 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   selectTask: async (id) => {
+    const task = get().tasks.find((item) => item.id === id);
+    if (!task || (task.projectId && task.projectId !== get().activeProjectId)) return;
     closeEs();
     set({ currentId: id, blocks: [], artifacts: [], status: null, taskError: null, lastSeq: 0 });
-    await reloadSnapshot(id);
-    openStream(id);
+    await reloadSnapshot(id, get().activeProjectId);
+    if (get().currentId === id) openStream(id, get().activeProjectId);
   },
 
   send: async (input, options, attachments = []) => {
@@ -72,14 +141,14 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input, options, attachments }),
+      body: JSON.stringify({ input, options, attachments, projectId: get().activeProjectId }),
     });
     if (!res.ok) return false;
 
     if (currentId) {
       // The existing EventSource receives the appended user block and the
       // continued agent run. Resync as a backstop when the stream is offline.
-      if (!get().connected) await reloadSnapshot(currentId);
+      if (!get().connected) await reloadSnapshot(currentId, get().activeProjectId);
       await get().refreshTasks();
       return true;
     }
@@ -93,13 +162,13 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   cancel: async () => {
     const id = get().currentId;
     if (!id) return;
-    await fetch(`/api/tasks/${id}/cancel`, { method: 'POST' });
+    await fetch(`/api/tasks/${id}/cancel?projectId=${encodeURIComponent(get().activeProjectId ?? '')}`, { method: 'POST' });
   },
 
   retry: async () => {
     const id = get().currentId;
     if (!id) return;
-    await fetch(`/api/tasks/${id}/retry`, { method: 'POST' });
+    await fetch(`/api/tasks/${id}/retry?projectId=${encodeURIComponent(get().activeProjectId ?? '')}`, { method: 'POST' });
   },
 }));
 
@@ -107,8 +176,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 // SSE + refresh recovery
 // ---------------------------------------------------------------------------
 
-async function reloadSnapshot(id: string) {
-  const res = await fetch(`/api/tasks/${id}`);
+async function reloadSnapshot(id: string, projectId: string | null) {
+  const suffix = projectId ? `?projectId=${encodeURIComponent(projectId)}` : '';
+  const res = await fetch(`/api/tasks/${id}${suffix}`);
   if (!res.ok) return;
   const snap = (await res.json()) as {
     task: TaskRow;
@@ -125,16 +195,18 @@ async function reloadSnapshot(id: string) {
   });
 }
 
-function openStream(id: string) {
+function openStream(id: string, projectId: string | null) {
   closeEs();
-  const source = new EventSource(`/api/tasks/${id}/stream?after=0`);
+  const params = new URLSearchParams({ after: '0' });
+  if (projectId) params.set('projectId', projectId);
+  const source = new EventSource(`/api/tasks/${id}/stream?${params.toString()}`);
   es = source;
 
   source.onopen = () => {
     useTaskStore.setState({ connected: true });
     // On every (re)connect, resync from the persisted snapshot so replayed
     // deltas can never double-apply; the seq guard drops anything folded in.
-    void reloadSnapshot(id);
+    void reloadSnapshot(id, projectId);
   };
   source.onerror = () => useTaskStore.setState({ connected: false });
 

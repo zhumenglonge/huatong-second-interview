@@ -42,6 +42,7 @@ export interface UploadRef {
 
 export interface TaskRow {
   id: string;
+  projectId?: string;
   title: string;
   input: string;
   status: TaskStatus;
@@ -49,6 +50,14 @@ export interface TaskRow {
   createdAt: number;
   updatedAt: number;
   lastSeq: number;
+}
+
+export interface ProjectRow {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+  isDefault: boolean;
 }
 
 export interface StepRow {

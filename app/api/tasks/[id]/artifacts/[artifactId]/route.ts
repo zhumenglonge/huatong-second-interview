@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { NextResponse } from 'next/server';
-import { listArtifacts, SANDBOX_ROOT } from '@/lib/db';
+import { getTaskForProject, listArtifacts, SANDBOX_ROOT, DEFAULT_PROJECT_ID } from '@/lib/db';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,6 +21,8 @@ const MIME: Record<string, string> = {
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string; artifactId: string }> }) {
   const { id, artifactId } = await params;
+  const projectId = new URL(req.url).searchParams.get('projectId') || DEFAULT_PROJECT_ID;
+  if (!getTaskForProject(id, projectId)) return NextResponse.json({ error: 'task not found' }, { status: 404 });
   const artifact = listArtifacts(id).find((item) => item.id === artifactId);
   if (!artifact) return NextResponse.json({ error: 'artifact not found' }, { status: 404 });
 

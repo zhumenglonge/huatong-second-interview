@@ -11,21 +11,15 @@ import {
   Network,
   NotebookPen,
   RefreshCw,
-  RotateCcw,
   X,
   Download,
   ExternalLink,
 } from 'lucide-react';
 import { useTaskStore } from '@/lib/store';
 
-type SectionId = 'todo' | 'results' | 'compute' | 'notes';
+import type { LayoutSectionId, LayoutVisibility } from './LayoutPopover';
 
-const SECTION_LABELS: Record<SectionId, string> = {
-  todo: '待办',
-  results: '结果',
-  compute: '计算',
-  notes: '笔记',
-};
+type SectionId = LayoutSectionId;
 
 function PanelSection({
   id,
@@ -77,7 +71,13 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function RightPanel() {
+export function RightPanel({
+  visible,
+  onVisibilityChange,
+}: {
+  visible: LayoutVisibility;
+  onVisibilityChange: (id: SectionId, value: boolean) => void;
+}) {
   const blocks = useTaskStore((state) => state.blocks);
   const artifacts = useTaskStore((state) => state.artifacts);
   const taskError = useTaskStore((state) => state.taskError);
@@ -88,19 +88,11 @@ export function RightPanel() {
   const widthRef = useRef(panelWidth);
   const resizing = useRef(false);
   const [open, setOpen] = useState<Record<SectionId, boolean>>({
-    todo: true,
-    results: true,
-    compute: false,
-    notes: false,
-  });
-  const [visible, setVisible] = useState<Record<SectionId, boolean>>({
-    todo: true,
-    results: true,
-    compute: true,
-    notes: true,
+    todo: true, results: true, compute: false, notes: false,
   });
 
   const steps = blocks.filter((block) => block.kind === 'step');
+  const hasVisibleSections = Object.values(visible).some(Boolean);
 
   useEffect(() => { widthRef.current = panelWidth; }, [panelWidth]);
   useEffect(() => {
@@ -133,11 +125,14 @@ export function RightPanel() {
   }, []);
 
   const toggle = (id: SectionId) => setOpen((state) => ({ ...state, [id]: !state[id] }));
-  const close = (id: SectionId) => setVisible((state) => ({ ...state, [id]: false }));
-  const hidden = (Object.keys(visible) as SectionId[]).filter((id) => !visible[id]);
+  const close = (id: SectionId) => onVisibilityChange(id, false);
 
   return (
-    <aside className="tracker-panel" style={{ width: panelWidth }}>
+    <aside
+      className={`tracker-panel ${hasVisibleSections ? '' : 'tracker-panel-hidden'}`}
+      style={{ width: hasVisibleSections ? panelWidth : 0, minWidth: hasVisibleSections ? 300 : 0 }}
+      aria-hidden={!hasVisibleSections}
+    >
       <div className="tracker-resizer" onMouseDown={onResizeStart} />
 
       <div className="tracker-sections">
@@ -221,17 +216,6 @@ export function RightPanel() {
         )}
       </div>
 
-      {hidden.length > 0 && (
-        <div className="tracker-restore">
-          <RotateCcw size={13} />
-          <span>恢复</span>
-          {hidden.map((id) => (
-            <button type="button" key={id} onClick={() => setVisible((state) => ({ ...state, [id]: true }))}>
-              {SECTION_LABELS[id]}
-            </button>
-          ))}
-        </div>
-      )}
     </aside>
   );
 }

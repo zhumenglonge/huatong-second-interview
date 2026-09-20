@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
-import { appendEvent, createTask, listTasks } from '@/lib/db';
+import { appendEvent, createTask, listProjects, getProject, listTasks, DEFAULT_PROJECT_ID } from '@/lib/db';
 import { publish } from '@/lib/events';
 import { startTask } from '@/lib/runner';
 import type { AgentRunOptions, ModelProfile } from '@/lib/types';
@@ -9,16 +9,20 @@ import { consumeUploads, promptWithAttachments } from '@/lib/uploads';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
-  return NextResponse.json({ tasks: listTasks() });
+export async function GET(req: Request) {
+  const projectId = new URL(req.url).searchParams.get('projectId') || DEFAULT_PROJECT_ID;
+  if (!getProject(projectId)) return NextResponse.json({ error: 'project not found' }, { status: 404 });
+  return NextResponse.json({ projects: listProjects(), activeProjectId: projectId, tasks: listTasks(projectId) });
 }
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => null)) as
-    | { input?: string; options?: Partial<AgentRunOptions>; attachments?: UploadRef[] }
+    | { input?: string; projectId?: string; options?: Partial<AgentRunOptions>; attachments?: UploadRef[] }
     | null;
   const input = String(body?.input ?? '').trim();
   if (!input) return NextResponse.json({ error: 'input required' }, { status: 400 });
+  const projectId = String(body?.projectId || DEFAULT_PROJECT_ID);
+  if (!getProject(projectId)) return NextResponse.json({ error: 'project not found' }, { status: 404 });
 
   const availableModels: ModelProfile[] = [
     'Auto', 'Qwen3.8-Max', 'Qwen3.8-Flash', 'Qwen3.7-Max', 'Qwen3.7-Plus',
@@ -38,7 +42,7 @@ export async function POST(req: Request) {
   };
 
   const id = randomUUID();
-  const task = createTask(id, input.slice(0, 40), input);
+  const task = createTask(id, input.slice(0, 40), input, projectId);
   const attachmentNames = consumeUploads(id, Array.isArray(body?.attachments) ? body.attachments : []);
 
   // persist + broadcast the user's message as the first conversation block

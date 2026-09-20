@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { appendEvent, buildSnapshot, getTask } from '@/lib/db';
+import { appendEvent, buildSnapshot, getTaskForProject, DEFAULT_PROJECT_ID } from '@/lib/db';
 import { publish } from '@/lib/events';
 import { isRunning, startTask } from '@/lib/runner';
 import type { AgentRunOptions, Block, ModelProfile } from '@/lib/types';
@@ -44,7 +44,8 @@ ${nextInput}`;
 
 export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
-  const task = getTask(id);
+  const projectId = new URL(req.url).searchParams.get('projectId') || DEFAULT_PROJECT_ID;
+  const task = getTaskForProject(id, projectId);
   if (!task) return NextResponse.json({ error: 'task not found' }, { status: 404 });
   if (isRunning(id)) return NextResponse.json({ error: 'task is already running' }, { status: 409 });
 
@@ -54,7 +55,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   const input = String(body?.input ?? '').trim();
   if (!input) return NextResponse.json({ error: 'input required' }, { status: 400 });
 
-  const snapshot = buildSnapshot(id);
+  const snapshot = buildSnapshot(id, projectId);
   const priorBlocks = snapshot?.blocks ?? [];
   const attachmentNames = consumeUploads(id, Array.isArray(body?.attachments) ? body.attachments : []);
   const block = {

@@ -6,6 +6,8 @@ import { Blocks, CircleHelp, FolderOpen, User } from 'lucide-react';
 interface IconRailProps {
   activeItem?: string;
   onNewChat?: () => void;
+  onProjectClick?: () => void;
+  onHubClick?: () => void;
 }
 
 const NAV_ITEMS = [
@@ -15,7 +17,7 @@ const NAV_ITEMS = [
 
 const BOTTOM_ITEMS = [{ id: 'help', label: '帮助', icon: CircleHelp }] as const;
 
-export function IconRail({ activeItem = 'project', onNewChat }: IconRailProps) {
+export function IconRail({ activeItem = 'project', onNewChat, onProjectClick, onHubClick }: IconRailProps) {
   return (
     <div className="icon-rail">
       <button
@@ -35,6 +37,7 @@ export function IconRail({ activeItem = 'project', onNewChat }: IconRailProps) {
             className={`rail-item ${activeItem === item.id ? 'active' : ''}`}
             title={item.label}
             type="button"
+            onClick={item.id === 'project' ? onProjectClick : item.id === 'hub' ? onHubClick : undefined}
           >
             <item.icon />
             <span>{item.label}</span>

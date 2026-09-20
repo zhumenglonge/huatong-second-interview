@@ -29,7 +29,7 @@ Biomni 是一个**通用生物医学 AI Agent / 集成生物学环境（IBE）**
 
 - **图标栏（60px，最左侧独立列）**
   - `w-[60px] h-screen bg-sidebar border-r flex flex-col items-center py-3`
-  - 上部：Logo + 项目(FolderOpen, 激活态) + 中心(Blocks)
+  - 上部：Logo + 项目(FolderOpen, 激活态) + **中心 → `/skills` Skill Hub 技能中心**（Blocks 仅为 lucide 图标名，隐喻"技能 = 可插拔能力积木块"）。实测（2026-09-19）：页面标题 "SKILL HUB"，展示技能卡片列表（Biomni Lab 官方 81 项，如 large-scale-virtual-screening / omics-dataset-retrieval / protein-structure-prediction），每项含分类（DRUG/DATA DISCOVERY、MOLECULAR DESIGN…）、描述、启用开关（Enabled）；顶部支持来源筛选（All/Mine/Biomni Lab/Team/Community）+ `New skill` 新建。它把 §4 行 15 的"150 工具/105 包/59 库"封装成面向用户的可开关技能单包，是 Agent 能力池的管理入口
   - 底部 `mt-auto`：帮助(CircleHelp) + 账号头像(用户名)
   - 每项：`flex flex-col items-center gap-1 py-2 w-full transition-colors group`
 - **项目侧栏（320px，可折叠 + 可拖拽调宽）**
@@ -50,7 +50,10 @@ Biomni 是一个**通用生物医学 AI Agent / 集成生物学环境（IBE）**
   - **顶栏（56px）**：面包屑 `Quick Tasks / 任务名` + 分享 + Transfer(aria="Hand off chat access") + 布局(Radix DropdownMenu, `aria-haspopup="menu"`) + 运行计时(`data-testid="task-runtime-readout"`)
   - 用户输入 bubble（`data-testid="user-message"`）。
   - Agent 过程块：`Show traces`（折叠的代码/日志）、**Clarification 卡片**（结构化多问表单：4 问 × 选项组 × Other × 单个 Submit）、**计划文档卡片**（带 `Approved` 状态）。
-  - Agent 消息操作条：`data-testid="prompt-actions"`（重试 `prompt-retry` + Copy）
+  - Agent 消息操作条：`data-testid="prompt-actions"`（重试 `prompt-retry` + Copy + 赞 + 踩）
+  - **从此处新建/分叉（fork）**：`data-testid="fork-from-here"`（★ 从任意一条 Agent 消息分支出新会话，把"一次任务的结论"变成"下一次任务的起点"，构成科研迭代闭环）
+  - **后续问题建议**：`data-testid="follow-up-question"` + `follow-up-question-label` + `fork-follow-up`（★ Agent 主动推荐下一步问题，每条可一键"在新任务中提问"或 Dismiss）
+  - **审查**：消息下方 `审查` 按钮（对产出/过程的审阅入口，推测关联 Agent 质量反馈）
   - 流式文本：`data-testid="streaming-text-root"`（★ 确认 SSE 打字机渲染）
   - **底部 Composer**：
     - `data-testid="composer-stack-region"`（附件/引用预览堆叠区）
@@ -159,7 +162,11 @@ stateDiagram-v2
 | 12 | 分享/协作 | 有 | **删除** | P2 | 需多用户/权限，超范围 |
 | 13 | 多模型选择（Max 等） | 有 | **降级** | P2 | 原型固定 Mock/单一 provider，留接口 |
 | 14 | 任务搜索/网格视图 | 有 | **删除** | P2 | 列表足够 |
-| 15 | 150 工具/105 包/59 数据库真实调用 | 有 | **Mock 替代** | P0* | 见 §7 降级；*Mock 属 P0 闭环一部分 |
+| 15 | 150 工具/105 包/59 数据库真实调用 | 有 | **按本地 Skill 能力逐步接入** | P0* | 不伪造远程工具市场；本地 Skill 提供可审计的领域指令，真实 Agent 负责执行 |
+| 16 | 从此处新建/分叉（`fork-from-here`） | 有（实测新增） | **新增(候选)** | P2 | 科研迭代闭环；原型可在任务级预留 fork 入口，非核心 loop 暂缓 |
+| 17 | 后续问题建议（`follow-up-question`/`fork-follow-up`） | 有（实测新增） | **降级** | P2 | Agent 推荐下一步问题；依赖真实 Agent 能力，原型 Mock 下省略 |
+| 18 | 消息反馈 赞/踩 + 审查 | 有（实测新增） | **删除** | P2 | 面向 Agent 质量评测，超出前端原型范围 |
+| 19 | 技能中心 Skill Hub（`/skills`，本地技能注册表+开关） | 中心入口此前无响应 | **升级为真实本地能力管理** | P1 | 从项目 `skills/` 目录读取 `skill.md`，通过 Skill Hub 展示、搜索、查看详情和持久化启用状态；启用的 Skill 会进入后续 Agent 任务上下文。暂不接入远程 Biomni 技能市场 |
 
 > 取舍总原则：**保核心 loop 与状态完整（P0）→ 做画布差异化（P1）→ 其余一律降级/删除（P2）**，契合"不以页面数量/代码量为评价标准"。
 
@@ -212,7 +219,7 @@ stateDiagram-v2
 | 不可复现项 | 原因 | 降级策略 | 真实替换点 |
 |---|---|---|---|
 | 多用户登录/鉴权 | 需账号 | 原型单用户、本地运行，不做鉴权 | 接入 OAuth/Session 的中间件位 |
-| 150 工具/105 包/59 数据库真实调用 | 外部生物资源 | **Mock LLM + Mock 工具集**：用 3–5 个代表性步骤（取序列→MSA→保守位点→结构分析→报告）模拟 | 统一 `LLMProvider`/`ToolRegistry` 接口，换真实 endpoint |
+| 150 工具/105 包/59 数据库真实调用 | 外部生物资源 | **本地 Skill 注册表 + 真实 Agent 指令加载**：技能定义以 `skills/<id>/skill.md` 版本化，Agent 按启用状态加载 | 后续可为具体 Skill 增加真实工具适配器或远程数据源 |
 | 云端沙箱执行代码 | 需云资源 | 本地进程/纯 Mock 步骤模拟执行与耗时，不真跑生物信息代码 | runner 内 `executeStep()` 替换为沙箱调用 |
 | 云盘/文件存储 | 需对象存储 | 本地文件系统 + SQLite 元数据模拟文件树与下载 | 换 S3/对象存储 adapter |
 | 计算面板（机器/作业） | 需真实集群 | 删除，用任务级状态代替 | 预留 compute 资源模型 |
@@ -253,5 +260,5 @@ stateDiagram-v2
 
 ---
 
-*本文为分析文档。§2.1 / §6 / §8.1 已于 2026-09-19 通过 AppleScript + Chrome DOM 实测（`sess_af4b00031712`）验证并修正；其余章节基于公开资料与截图。登录态功能均按 §7 降级处理。*
+*本文为分析文档。§2.1 / §6 / §8.1 已于 2026-09-19 通过 AppleScript + Chrome DOM 实测（`sess_af4b00031712`）验证并修正；§2.1 中栏会话流、图标栏"中心"→`/skills` Skill Hub 与 §4 行 16–19（fork-from-here / follow-up-question / 赞踩反馈+审查 / 技能中心）已于同日第二个会话 `sess_57f6831fbe2d` 实测补充。其余章节基于公开资料与截图。登录态功能均按 §7 降级处理。*
 *实测详细数据见 `sidebar-comparison.md`（左侧栏）及对话记录。*

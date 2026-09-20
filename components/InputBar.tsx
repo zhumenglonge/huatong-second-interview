@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {
-  AtSign, Check, ChevronDown, CircleHelp, Database, FileUp, Paperclip,
-  Plus, Send, Sparkles, Square, Wrench, X,
+  AtSign, Check, ChevronDown, CircleHelp, FileUp, Paperclip,
+  Plus, Send, Sparkles, Square, X,
 } from 'lucide-react';
 import { useTaskStore } from '@/lib/store';
 import type { ModelProfile, UploadRef } from '@/lib/types';
@@ -25,14 +25,7 @@ const MODELS: Array<{ id: ModelProfile; label: string; description: string }> = 
   { id: 'MiniMax-M2.7', label: 'MiniMax-M2.7', description: 'MiniMax · general purpose' },
 ];
 
-const SKILLS = [
-  { id: 'literature', label: 'Literature review', description: 'Search and synthesize biomedical literature', icon: Sparkles },
-  { id: 'pubmed', label: 'PubMed', description: 'Find papers and extract cited evidence', icon: Database },
-  { id: 'geo', label: 'GEO / SRA', description: 'Discover and analyze public omics datasets', icon: Database },
-  { id: 'differential_expression', label: 'Differential expression', description: 'DE analysis, QC, volcano plots and heatmaps', icon: Wrench },
-  { id: 'single_cell', label: 'Single-cell RNA-seq', description: 'QC, clustering, annotation and markers', icon: Wrench },
-  { id: 'protein_design', label: 'Protein design', description: 'Sequence, structure and rational design workflows', icon: Sparkles },
-] as const;
+type SkillOption = { id: string; label: string; description: string; icon: typeof Sparkles };
 
 export function InputBar() {
   const [text, setText] = useState('');
@@ -43,6 +36,7 @@ export function InputBar() {
   const [addOpen, setAddOpen] = useState(false);
   const [skillOpen, setSkillOpen] = useState(false);
   const [skillQuery, setSkillQuery] = useState('');
+  const [registrySkills, setRegistrySkills] = useState<SkillOption[]>([]);
   const [attachments, setAttachments] = useState<UploadRef[]>([]);
   const [uploading, setUploading] = useState(false);
   const [composerError, setComposerError] = useState<string | null>(null);
@@ -60,7 +54,13 @@ export function InputBar() {
   const running = status === 'running' || status === 'queued' || status === 'planning';
   const failed = status === 'failed';
   const activeModel = MODELS.find((item) => item.id === model) ?? MODELS[0];
-  const filteredSkills = SKILLS.filter((skill) =>
+  useEffect(() => {
+    void fetch('/api/skills').then((response) => response.json()).then((body: { skills?: Array<{ id: string; name: string; description: string }> }) => {
+      setRegistrySkills((body.skills ?? []).map((skill) => ({ id: skill.id, label: skill.name, description: skill.description, icon: Sparkles })));
+    }).catch(() => undefined);
+  }, []);
+
+  const filteredSkills = registrySkills.filter((skill) =>
     `${skill.label} ${skill.description}`.toLowerCase().includes(skillQuery.toLowerCase()),
   );
 
@@ -132,7 +132,7 @@ export function InputBar() {
         {(selectedSkills.length > 0 || attachments.length > 0 || uploading) && (
           <div className="composer-chips">
             {selectedSkills.map((id) => {
-              const skill = SKILLS.find((item) => item.id === id);
+              const skill = registrySkills.find((item) => item.id === id);
               return skill ? (
                 <span className="composer-chip" key={id}>
                   <AtSign size={12} />{skill.label}

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { appendEvent, buildSnapshot, getTask } from '@/lib/db';
+import { appendEvent, buildSnapshot, getTaskForProject, DEFAULT_PROJECT_ID } from '@/lib/db';
 import { publish } from '@/lib/events';
 import { isRunning, startTask } from '@/lib/runner';
 import type { AgentRunOptions } from '@/lib/types';
@@ -8,11 +8,12 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const task = getTask(id);
+  const projectId = new URL(_req.url).searchParams.get('projectId') || DEFAULT_PROJECT_ID;
+  const task = getTaskForProject(id, projectId);
   if (!task) return NextResponse.json({ error: 'task not found' }, { status: 404 });
   if (isRunning(id)) return NextResponse.json({ error: 'task is already running' }, { status: 409 });
 
-  const snapshot = buildSnapshot(id);
+  const snapshot = buildSnapshot(id, projectId);
   const plan = [...(snapshot?.blocks ?? [])].reverse().find((block) => block.kind === 'plan');
   if (!plan) return NextResponse.json({ error: 'plan not found' }, { status: 409 });
   const options = plan.meta?.options as AgentRunOptions | undefined;

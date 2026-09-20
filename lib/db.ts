@@ -5,6 +5,7 @@ import type {
   ArtifactRow,
   Block,
   EventRow,
+  ProjectRow,
   StepRow,
   TaskRow,
   TaskSnapshot,
@@ -17,6 +18,7 @@ import { applyEventToBlocks } from './reducer';
 
 const DATA_DIR = path.resolve(process.cwd(), process.env.DATA_DIR || '.data');
 export const SANDBOX_ROOT = path.join(DATA_DIR, 'sandboxes');
+export const DEFAULT_PROJECT_ID = 'quick-tasks';
 
 function ensureDirs() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -41,6 +43,13 @@ function getDb(): DatabaseSync {
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       last_seq INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS projects (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      is_default INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS steps (
       id TEXT PRIMARY KEY,
@@ -69,26 +78,93 @@ function getDb(): DatabaseSync {
       payload TEXT NOT NULL,
       created_at INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS skill_settings (
+      skill_id TEXT PRIMARY KEY,
+      enabled INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
     CREATE INDEX IF NOT EXISTS idx_events_task_seq ON events (task_id, seq);
     CREATE INDEX IF NOT EXISTS idx_steps_task ON steps (task_id, ord);
     CREATE INDEX IF NOT EXISTS idx_artifacts_task ON artifacts (task_id, created_at);
   `);
+  const taskColumns = db.prepare(`PRAGMA table_info(tasks)`).all() as { name: string }[];
+  if (!taskColumns.some((c) => c.name === 'project_id')) {
+    db.exec(`ALTER TABLE tasks ADD COLUMN project_id TEXT`);
+  }
+  const now = Date.now();
+  db.prepare(
+    `INSERT OR IGNORE INTO projects (id, name, created_at, updated_at, is_default)
+     VALUES (?, ?, ?, ?, 1)`,
+  ).run(DEFAULT_PROJECT_ID, '快速任务', now, now);
+  db.prepare(`UPDATE tasks SET project_id = ? WHERE project_id IS NULL OR project_id = ''`).run(DEFAULT_PROJECT_ID);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_project_created ON tasks (project_id, created_at DESC)`);
   globalForDb.__biomniDb = db;
   return db;
+}
+
+export function getSkillEnablement(skillId: string): boolean | undefined {
+  const row = getDb().prepare(`SELECT enabled FROM skill_settings WHERE skill_id = ?`).get(skillId) as { enabled?: number } | undefined;
+  return row ? Boolean(row.enabled) : undefined;
+}
+
+export function setSkillEnablement(skillId: string, enabled: boolean) {
+  getDb().prepare(`INSERT INTO skill_settings (skill_id, enabled, updated_at) VALUES (?, ?, ?)
+    ON CONFLICT(skill_id) DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at`)
+    .run(skillId, enabled ? 1 : 0, Date.now());
 }
 
 // ---------------------------------------------------------------------------
 // Tasks
 // ---------------------------------------------------------------------------
 
-export function createTask(id: string, title: string, input: string): TaskRow {
+export function listProjects(): ProjectRow[] {
+  const rows = getDb().prepare(`SELECT * FROM projects ORDER BY is_default DESC, created_at ASC`).all() as Record<string, unknown>[];
+  return rows.map(mapProject);
+}
+
+export function getProject(id: string): ProjectRow | undefined {
+  const row = getDb().prepare(`SELECT * FROM projects WHERE id = ?`).get(id) as Record<string, unknown> | undefined;
+  return row ? mapProject(row) : undefined;
+}
+
+export function createProject(name: string, id = `project-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`): ProjectRow {
+  const now = Date.now();
+  getDb()
+    .prepare(`INSERT INTO projects (id, name, created_at, updated_at, is_default) VALUES (?, ?, ?, ?, 0)`)
+    .run(id, name.trim(), now, now);
+  return getProject(id)!;
+}
+
+export function renameProject(id: string, name: string): ProjectRow | undefined {
+  const trimmed = name.trim();
+  if (!trimmed) return undefined;
+  const result = getDb()
+    .prepare(`UPDATE projects SET name = ?, updated_at = ? WHERE id = ?`)
+    .run(trimmed, Date.now(), id);
+  if (!result.changes) return undefined;
+  return getProject(id);
+}
+
+export type DeleteProjectResult = 'deleted' | 'not_found' | 'default' | 'not_empty';
+
+export function deleteProject(id: string): DeleteProjectResult {
+  const project = getProject(id);
+  if (!project) return 'not_found';
+  if (project.isDefault) return 'default';
+  const row = getDb().prepare(`SELECT COUNT(*) AS count FROM tasks WHERE project_id = ?`).get(id) as { count: number };
+  if (Number(row?.count ?? 0) > 0) return 'not_empty';
+  getDb().prepare(`DELETE FROM projects WHERE id = ?`).run(id);
+  return 'deleted';
+}
+
+export function createTask(id: string, title: string, input: string, projectId = DEFAULT_PROJECT_ID): TaskRow {
   const now = Date.now();
   getDb()
     .prepare(
-      `INSERT INTO tasks (id, title, input, status, error, created_at, updated_at, last_seq)
-       VALUES (?, ?, ?, 'queued', NULL, ?, ?, 0)`,
+      `INSERT INTO tasks (id, title, input, project_id, status, error, created_at, updated_at, last_seq)
+       VALUES (?, ?, ?, ?, 'queued', NULL, ?, ?, 0)`,
     )
-    .run(id, title, input, now, now);
+    .run(id, title, input, projectId, now, now);
   return getTask(id)!;
 }
 
@@ -99,10 +175,15 @@ export function getTask(id: string): TaskRow | undefined {
   return row ? mapTask(row) : undefined;
 }
 
-export function listTasks(): TaskRow[] {
+export function getTaskForProject(id: string, projectId: string): TaskRow | undefined {
+  const row = getDb().prepare(`SELECT * FROM tasks WHERE id = ? AND project_id = ?`).get(id, projectId) as Record<string, unknown> | undefined;
+  return row ? mapTask(row) : undefined;
+}
+
+export function listTasks(projectId?: string): TaskRow[] {
   const rows = getDb()
-    .prepare(`SELECT * FROM tasks ORDER BY created_at DESC LIMIT 100`)
-    .all() as Record<string, unknown>[];
+    .prepare(projectId ? `SELECT * FROM tasks WHERE project_id = ? ORDER BY created_at DESC LIMIT 100` : `SELECT * FROM tasks ORDER BY created_at DESC LIMIT 100`)
+    .all(...(projectId ? [projectId] : [])) as Record<string, unknown>[];
   return rows.map(mapTask);
 }
 
@@ -110,6 +191,11 @@ export function updateTaskStatus(id: string, status: TaskRow['status'], error?: 
   getDb()
     .prepare(`UPDATE tasks SET status = ?, error = ?, updated_at = ? WHERE id = ?`)
     .run(status, error ?? null, Date.now(), id);
+}
+
+export function taskBelongsToProject(taskId: string, projectId: string): boolean {
+  const row = getDb().prepare(`SELECT 1 FROM tasks WHERE id = ? AND project_id = ?`).get(taskId, projectId);
+  return Boolean(row);
 }
 
 // ---------------------------------------------------------------------------
@@ -205,8 +291,8 @@ export function listEvents(taskId: string, afterSeq = 0): EventRow[] {
  * Rebuild the conversation block list by replaying the persisted event log.
  * This is the same reducer the client uses live, guaranteeing refresh == live.
  */
-export function buildSnapshot(taskId: string): TaskSnapshot | undefined {
-  const task = getTask(taskId);
+export function buildSnapshot(taskId: string, projectId?: string): TaskSnapshot | undefined {
+  const task = projectId ? getTaskForProject(taskId, projectId) : getTask(taskId);
   if (!task) return undefined;
   const events = listEvents(taskId, 0);
   const blocks: Block[] = [];
@@ -230,6 +316,7 @@ export { applyEventToBlocks } from './reducer';
 function mapTask(r: Record<string, unknown>): TaskRow {
   return {
     id: r.id as string,
+    projectId: (r.project_id as string) || DEFAULT_PROJECT_ID,
     title: r.title as string,
     input: r.input as string,
     status: r.status as TaskRow['status'],
@@ -237,6 +324,16 @@ function mapTask(r: Record<string, unknown>): TaskRow {
     createdAt: r.created_at as number,
     updatedAt: r.updated_at as number,
     lastSeq: r.last_seq as number,
+  };
+}
+
+function mapProject(r: Record<string, unknown>): ProjectRow {
+  return {
+    id: r.id as string,
+    name: r.name as string,
+    createdAt: r.created_at as number,
+    updatedAt: r.updated_at as number,
+    isDefault: Boolean(r.is_default),
   };
 }
 

@@ -8,6 +8,7 @@ import {
   type Query,
 } from '@qodercn-ai/qodercn-agent-sdk';
 import type { AgentRunOptions } from './types';
+import { listSkills, loadEnabledSkills } from './skills';
 
 /**
  * Real-agent provider backed by the QoderCN Agent SDK (CN endpoints, quota).
@@ -34,19 +35,10 @@ Rules:
 - Keep each visible message concise: state what you are doing, then do it.
 - End with a short summary of findings plus a list of the files you produced.`;
 
-const SKILL_GUIDANCE: Record<string, string> = {
-  literature: 'Search, compare, and synthesize biomedical literature with explicit citations and evidence quality.',
-  pubmed: 'Use PubMed-oriented query design, PMID tracking, and structured evidence extraction.',
-  geo: 'Work as a GEO/SRA dataset specialist: accession discovery, metadata inspection, download planning, and reproducible analysis.',
-  differential_expression: 'Use rigorous differential-expression workflows, QC, appropriate statistics, multiple-testing correction, and volcano/heatmap outputs.',
-  single_cell: 'Apply single-cell RNA-seq best practices including QC, normalization, clustering, annotation, and marker analysis.',
-  protein_design: 'Apply protein sequence/structure analysis and rational design principles; clearly label computational hypotheses.',
-};
-
 export type AgentMode = 'plan' | 'execute';
 
 function systemPromptFor(options: AgentRunOptions, mode: AgentMode): string {
-  const selected = options.skills.map((skill) => SKILL_GUIDANCE[skill]).filter(Boolean);
+  const selected = loadEnabledSkills(options.skills).map((skill) => `[${skill.id}] ${skill.instructions}`);
   const skillSection = selected.length
     ? `\nSelected specialist skills for this turn:\n${selected.map((item) => `- ${item}`).join('\n')}`
     : '';
@@ -83,6 +75,14 @@ export async function runQoderAgent(opts: {
   onReady?: (handle: AgentHandle) => void;
 }): Promise<{ ok: boolean; error?: string; outcome?: 'waiting' | 'awaiting_approval' }> {
   const { input, options, mode = 'execute', cwd, signal, emit, onReady } = opts;
+  const appliedSkills = loadEnabledSkills(options.skills).map((skill) => skill.id);
+  const requestedSkills = options.skills.length ? new Set(options.skills) : null;
+  const skippedSkills = requestedSkills
+    ? listSkills().filter((skill) => requestedSkills.has(skill.id) && (!skill.valid || !skill.enabled)).map((skill) => skill.id)
+    : [];
+  if (skippedSkills.length) {
+    emit('block.add', { block: { id: `skill-warning-${randomUUID()}`, kind: 'error', text: `Skipped unavailable skills: ${skippedSkills.join(', ')}` } });
+  }
 
   const abortController = new AbortController();
   const onAbort = () => abortController.abort();
@@ -135,7 +135,7 @@ export async function runQoderAgent(opts: {
         kind: 'plan',
         name: '执行计划',
         text,
-        meta: { approved: false, executionPrompt: input, options },
+        meta: { approved: false, executionPrompt: input, options: { ...options, skills: appliedSkills }, appliedSkills },
       },
     });
   };
